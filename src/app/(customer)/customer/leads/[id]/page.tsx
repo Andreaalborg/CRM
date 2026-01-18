@@ -12,6 +12,15 @@ interface Props {
   params: Promise<{ id: string }>;
 }
 
+interface EmailLog {
+  id: string;
+  subject: string;
+  to: string;
+  status: string;
+  createdAt: Date;
+  sentAt: Date | null;
+}
+
 const statusLabels: Record<string, string> = {
   NEW: "Ny",
   CONTACTED: "Kontaktet",
@@ -231,7 +240,7 @@ export default async function CustomerLeadDetailPage({ params }: Props) {
               </CardHeader>
               <CardContent>
                 <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                  {submission.emailLogs.map((log) => (
+                  {submission.emailLogs.map((log: EmailLog) => (
                     <div 
                       key={log.id}
                       style={{ 
@@ -320,7 +329,7 @@ export default async function CustomerLeadDetailPage({ params }: Props) {
                   </div>
                 </div>
                 
-                {submission.emailLogs.map((log) => (
+                {submission.emailLogs.map((log: EmailLog) => (
                   <div key={log.id} style={{ display: "flex", gap: "12px" }}>
                     <div style={{ 
                       width: "8px", 
