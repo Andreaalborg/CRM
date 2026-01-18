@@ -55,9 +55,11 @@ export default function NewInvoicePage() {
     try {
       const res = await fetch("/api/admin/customers");
       const data = await res.json();
-      setOrganizations(data.organizations || []);
-      if (data.organizations?.length > 0) {
-        setOrganizationId(data.organizations[0].id);
+      // API returnerer array direkte, ikke { organizations: [...] }
+      const orgs = Array.isArray(data) ? data : (data.organizations || []);
+      setOrganizations(orgs);
+      if (orgs.length > 0) {
+        setOrganizationId(orgs[0].id);
       }
     } catch (error) {
       console.error("Error fetching organizations:", error);
