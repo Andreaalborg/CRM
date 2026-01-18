@@ -17,6 +17,44 @@ interface Props {
   params: Promise<{ customerId: string }>;
 }
 
+interface OrgUser {
+  id: string;
+  name: string | null;
+  email: string;
+  role: string;
+  createdAt: Date;
+}
+
+interface OrgForm {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  createdAt: Date;
+  _count: { submissions: number };
+}
+
+interface OrgSubmission {
+  id: string;
+  data: unknown;
+  status: string;
+  createdAt: Date;
+  form: { name: string };
+}
+
+interface OrgAutomation {
+  id: string;
+  name: string;
+  status: string;
+  _count: { actions: number };
+}
+
+interface OrgEmailTemplate {
+  id: string;
+  name: string;
+  subject: string;
+}
+
 export default async function CustomerDetailPage({ params }: Props) {
   const { customerId } = await params;
   const session = await getServerSession(authOptions);
@@ -231,7 +269,7 @@ export default async function CustomerDetailPage({ params }: Props) {
               </CardHeader>
               <CardContent>
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                  {organization.users.map((user) => (
+                  {organization.users.map((user: OrgUser) => (
                     <div 
                       key={user.id}
                       style={{
@@ -294,7 +332,7 @@ export default async function CustomerDetailPage({ params }: Props) {
                   </p>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                    {organization.forms.map((form) => (
+                    {organization.forms.map((form: OrgForm) => (
                       <div 
                         key={form.id}
                         style={{
@@ -337,7 +375,7 @@ export default async function CustomerDetailPage({ params }: Props) {
                   </p>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                    {organization.submissions.map((submission) => {
+                    {organization.submissions.map((submission: OrgSubmission) => {
                       const data = submission.data as Record<string, unknown>;
                       const name = (data.name as string) || (data.navn as string) || "Ukjent";
                       const email = (data.email as string) || (data.epost as string) || "";
@@ -408,7 +446,7 @@ export default async function CustomerDetailPage({ params }: Props) {
                   </p>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                    {organization.automations.map((auto) => (
+                    {organization.automations.map((auto: OrgAutomation) => (
                       <div 
                         key={auto.id}
                         style={{
@@ -443,7 +481,7 @@ export default async function CustomerDetailPage({ params }: Props) {
                   </p>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                    {organization.emailTemplates.map((template) => (
+                    {organization.emailTemplates.map((template: OrgEmailTemplate) => (
                       <div 
                         key={template.id}
                         style={{
