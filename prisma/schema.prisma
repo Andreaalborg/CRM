@@ -1,0 +1,578 @@
+// Prisma Schema for Kundedata & Skjema Web-App
+// Database: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================
+// AUTENTISERING & BRUKERE
+// ============================================
+
+enum UserRole {
+  SUPER_ADMIN  // Deg - full tilgang til alt
+  CUSTOMER     // Dine kunder - tilgang til eget workspace
+}
+
+model User {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  emailVerified  DateTime?
+  password       String?   // Hashed med bcrypt
+  name           String?
+  image          String?
+  role           UserRole  @default(CUSTOMER)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Relasjoner
+  accounts       Account[]
+  sessions       Session[]
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String?
+  
+  // For aktivitetslogg
+  activityLogs   ActivityLog[]
+
+  @@index([email])
+  @@index([organizationId])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ============================================
+// ORGANISASJONER (Kundens bedrifter)
+// ============================================
+
+model Organization {
+  id                 String   @id @default(cuid())
+  name               String
+  slug               String   @unique // URL-vennlig navn
+  logo               String?
+  website            String?
+  description        String?
+  
+  // Bedriftsinformasjon
+  organizationNumber String?  // Org.nummer
+  phone              String?
+  address            String?
+  city               String?
+  postalCode         String?
+  country            String?  @default("Norge")
+  
+  // Abonnement
+  plan               String   @default("standard") // starter, standard, enterprise
+  maxUsers           Int      @default(5)
+  maxForms           Int      @default(10)
+  
+  // Internt
+  notes              String?  @db.Text // Interne notater (kun for admin)
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  // Innstillinger
+  settings    OrganizationSettings?
+
+  // Relasjoner
+  users       User[]
+  forms       Form[]
+  submissions Submission[]
+  emailTemplates EmailTemplate[]
+  automations Automation[]
+
+  @@index([slug])
+}
+
+model OrganizationSettings {
+  id             String @id @default(cuid())
+  organizationId String @unique
+  
+  // Branding
+  primaryColor   String @default("#3B82F6")
+  secondaryColor String @default("#1E40AF")
+  
+  // E-post innstillinger
+  senderName     String?
+  senderEmail    String?
+  replyToEmail   String?
+  
+  // Varsler
+  notifyOnSubmission Boolean @default(true)
+  notificationEmails String[] // Liste over e-poster som skal varsles
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+// ============================================
+// SKJEMAER
+// ============================================
+
+enum FormStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model Form {
+  id             String     @id @default(cuid())
+  name           String
+  slug           String     // URL-vennlig navn
+  description    String?
+  status         FormStatus @default(DRAFT)
+  
+  // Design & Innstillinger
+  submitButtonText String   @default("Send inn")
+  successMessage   String   @default("Takk for din henvendelse!")
+  redirectUrl      String?  // Valgfri redirect etter innsending
+  
+  // Styling
+  backgroundColor  String   @default("#FFFFFF")
+  textColor        String   @default("#1F2937")
+  buttonColor      String   @default("#3B82F6")
+  buttonTextColor  String   @default("#FFFFFF")
+  borderRadius     Int      @default(8)
+  fontFamily       String   @default("Inter")
+  
+  // Metadata
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  publishedAt    DateTime?
+  
+  // Relasjoner
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  
+  fields         FormField[]
+  submissions    Submission[]
+  automations    Automation[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+  @@index([status])
+}
+
+// ============================================
+// SKJEMAFELT
+// ============================================
+
+enum FieldType {
+  TEXT
+  EMAIL
+  PHONE
+  NUMBER
+  TEXTAREA
+  SELECT
+  MULTI_SELECT
+  CHECKBOX
+  RADIO
+  DATE
+  TIME
+  DATETIME
+  FILE
+  HIDDEN
+  HEADING
+  PARAGRAPH
+  DIVIDER
+}
+
+model FormField {
+  id          String    @id @default(cuid())
+  formId      String
+  
+  // Felt-konfigurasjon
+  type        FieldType
+  name        String    // Intern nøkkel (f.eks. "first_name")
+  label       String    // Visningsnavn (f.eks. "Fornavn")
+  placeholder String?
+  helpText    String?
+  
+  // Validering
+  required    Boolean   @default(false)
+  minLength   Int?
+  maxLength   Int?
+  minValue    Float?
+  maxValue    Float?
+  pattern     String?   // Regex mønster
+  
+  // For SELECT, RADIO, CHECKBOX
+  options     Json?     // Array av { value: string, label: string }
+  
+  // Layout
+  order       Int       @default(0)
+  width       String    @default("full") // "full", "half", "third"
+  
+  // Betinget visning
+  conditionalLogic Json? // { fieldId: string, operator: string, value: string }
+  
+  // Metadata
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  form        Form      @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@index([formId])
+  @@index([formId, order])
+}
+
+// ============================================
+// SKJEMAINNSENDINGER (Leads)
+// ============================================
+
+enum SubmissionStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  CONVERTED
+  LOST
+  SPAM
+}
+
+model Submission {
+  id             String           @id @default(cuid())
+  formId         String
+  organizationId String
+  
+  // Innsendt data
+  data           Json             // Alle feltene som ble sendt inn
+  
+  // Lead-håndtering
+  status         SubmissionStatus @default(NEW)
+  notes          String?          @db.Text
+  
+  // Ekstra metadata (notater, tags, etc.)
+  metadata       Json?
+  
+  // For oppfølging
+  lastContactedAt DateTime?
+  nextFollowUpAt  DateTime?
+  
+  // Tracking metadata
+  ipAddress      String?
+  userAgent      String?
+  referrer       String?
+  
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  
+  // Relasjoner
+  form           Form             @relation(fields: [formId], references: [id], onDelete: Cascade)
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  emailLogs      EmailLog[]
+  tags           SubmissionTag[]
+
+  @@index([formId])
+  @@index([organizationId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([nextFollowUpAt])
+}
+
+// ============================================
+// E-POST SYSTEM
+// ============================================
+
+model EmailTemplate {
+  id             String   @id @default(cuid())
+  organizationId String
+  
+  name           String
+  subject        String
+  htmlContent    String   @db.Text
+  textContent    String?  @db.Text
+  
+  // Variabler som støttes (for visning i UI)
+  variables      String[] // f.eks. ["{{navn}}", "{{epost}}", "{{telefon}}"]
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  automations    AutomationAction[]
+
+  @@index([organizationId])
+}
+
+// ============================================
+// AUTOMASJONER & TRIGGERE
+// ============================================
+
+enum TriggerType {
+  FORM_SUBMISSION       // Ved skjemainnsending
+  FIELD_VALUE           // Ved spesifikk feltverdi
+  TIME_DELAY            // Etter X tid
+  SUBMISSION_STATUS     // Ved statusendring
+  SCHEDULED             // Planlagt tidspunkt
+  RECURRING             // Gjentakende (daglig, ukentlig, etc.)
+  INACTIVITY            // Ved ingen aktivitet på X dager
+  DATE_FIELD            // Basert på datofelt (f.eks. bursdag, 1-års jubileum)
+}
+
+enum AutomationStatus {
+  ACTIVE
+  PAUSED
+  DRAFT
+}
+
+model Automation {
+  id             String           @id @default(cuid())
+  organizationId String
+  formId         String?          // Valgfri - hvis knyttet til spesifikt skjema
+  
+  name           String
+  description    String?
+  status         AutomationStatus @default(DRAFT)
+  
+  // Trigger-konfigurasjon
+  triggerType    TriggerType
+  triggerConfig  Json             // Konfigurasjon basert på triggerType
+  
+  // Statistikk
+  runCount       Int              @default(0)
+  lastRunAt      DateTime?
+  
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  
+  // Relasjoner
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  form           Form?            @relation(fields: [formId], references: [id], onDelete: SetNull)
+  actions        AutomationAction[]
+  executionLogs  AutomationExecutionLog[]
+  scheduledJobs  ScheduledJob[]
+
+  @@index([organizationId])
+  @@index([formId])
+  @@index([status])
+}
+
+enum ActionType {
+  SEND_EMAIL
+  WAIT_DELAY
+  UPDATE_SUBMISSION_STATUS
+  WEBHOOK
+  SEND_NOTIFICATION
+  CONDITION               // Betingelse (if/else)
+  SPLIT_TEST              // A/B-testing
+  ADD_TAG                 // Legg til tag på lead
+  REMOVE_TAG              // Fjern tag fra lead
+}
+
+model AutomationAction {
+  id           String     @id @default(cuid())
+  automationId String
+  
+  type         ActionType
+  order        Int        @default(0)
+  
+  // Konfigurasjon basert på type
+  config       Json       // F.eks. { templateId: string } for SEND_EMAIL
+  
+  // For e-post-handlinger
+  emailTemplateId String?
+  emailTemplate   EmailTemplate? @relation(fields: [emailTemplateId], references: [id], onDelete: SetNull)
+  
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  
+  automation   Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+
+  @@index([automationId])
+  @@index([automationId, order])
+}
+
+// ============================================
+// LOGGING
+// ============================================
+
+enum EmailStatus {
+  PENDING
+  SENT
+  DELIVERED
+  OPENED
+  CLICKED
+  BOUNCED
+  FAILED
+}
+
+model EmailLog {
+  id           String      @id @default(cuid())
+  submissionId String?
+  
+  to           String
+  from         String
+  subject      String
+  status       EmailStatus @default(PENDING)
+  
+  // Sporingsdata
+  sentAt       DateTime?
+  deliveredAt  DateTime?
+  openedAt     DateTime?
+  clickedAt    DateTime?
+  
+  // Feilinformasjon
+  errorMessage String?
+  
+  // Ekstern referanse (fra e-posttjeneste)
+  externalId   String?
+  
+  createdAt    DateTime    @default(now())
+  
+  submission   Submission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
+
+  @@index([submissionId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model AutomationExecutionLog {
+  id           String   @id @default(cuid())
+  automationId String
+  
+  success      Boolean
+  message      String?
+  executedAt   DateTime @default(now())
+  
+  automation   Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+
+  @@index([automationId])
+  @@index([executedAt])
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  
+  action    String   // f.eks. "form.created", "submission.viewed"
+  resource  String   // f.eks. "form", "submission"
+  resourceId String?
+  details   Json?
+  
+  ipAddress String?
+  userAgent String?
+  
+  createdAt DateTime @default(now())
+  
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([resource])
+  @@index([createdAt])
+}
+
+// ============================================
+// PLANLAGTE JOBBER (for tidsbaserte automasjoner)
+// ============================================
+
+enum ScheduledJobStatus {
+  PENDING      // Venter på kjøring
+  PROCESSING   // Under behandling
+  COMPLETED    // Fullført
+  FAILED       // Feilet
+  CANCELLED    // Avbrutt
+}
+
+model ScheduledJob {
+  id              String             @id @default(cuid())
+  automationId    String
+  submissionId    String?            // Leaden som utløste jobben
+  actionIndex     Int                // Hvilken aksjon i sekvensen
+  
+  // Planlegging
+  scheduledFor    DateTime           // Når jobben skal kjøres
+  status          ScheduledJobStatus @default(PENDING)
+  
+  // Metadata
+  payload         Json?              // Data som trengs for kjøring
+  result          Json?              // Resultat etter kjøring
+  errorMessage    String?
+  
+  // For gjentakende jobber
+  isRecurring     Boolean            @default(false)
+  recurringPattern String?           // Cron-uttrykk eller "daily", "weekly", etc.
+  nextRunAt       DateTime?
+  
+  createdAt       DateTime           @default(now())
+  executedAt      DateTime?
+  
+  automation      Automation         @relation(fields: [automationId], references: [id], onDelete: Cascade)
+
+  @@index([automationId])
+  @@index([scheduledFor])
+  @@index([status])
+  @@index([status, scheduledFor])
+}
+
+// ============================================
+// TAGS FOR LEADS (segmentering)
+// ============================================
+
+model Tag {
+  id             String   @id @default(cuid())
+  organizationId String
+  
+  name           String
+  color          String   @default("#6366f1")
+  
+  createdAt      DateTime @default(now())
+  
+  submissions    SubmissionTag[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model SubmissionTag {
+  id           String   @id @default(cuid())
+  submissionId String
+  tagId        String
+  
+  createdAt    DateTime @default(now())
+  
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  tag          Tag        @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([submissionId, tagId])
+  @@index([submissionId])
+  @@index([tagId])
+}
