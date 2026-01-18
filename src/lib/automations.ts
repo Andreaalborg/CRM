@@ -1,6 +1,5 @@
 import { db } from "./db";
 import { sendEmail, replaceVariables } from "./email";
-import { Prisma } from "@prisma/client";
 
 interface SubmissionData {
   id: string;
@@ -130,7 +129,7 @@ async function executeAutomation(
           scheduledFor,
           payload: {
             submissionData: submission.data,
-          } as Prisma.InputJsonValue,
+          } as any,
         },
       });
       

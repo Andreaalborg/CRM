@@ -3,7 +3,6 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createAutomationSchema } from "@/lib/validations";
-import { Prisma } from "@prisma/client";
 
 // GET /api/automations - Hent alle automasjoner
 export async function GET() {
@@ -71,14 +70,14 @@ export async function POST(req: NextRequest) {
         description,
         formId: formId || null,
         triggerType,
-        triggerConfig: (triggerConfig || {}) as Prisma.InputJsonValue,
+        triggerConfig: (triggerConfig || {}) as any,
         organizationId: session.user.organizationId,
         status: "ACTIVE",
         actions: actions
           ? {
               create: actions.map((action, index) => ({
                 type: action.type,
-                config: (action.config || {}) as Prisma.InputJsonValue,
+                config: (action.config || {}) as any,
                 order: action.order ?? index,
                 // Hent emailTemplateId fra action hvis det er en SEND_EMAIL handling
                 emailTemplateId: action.type === "SEND_EMAIL" && action.emailTemplateId 
