@@ -2,9 +2,20 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Card, CardContent, Badge } from "@/components/ui";
-import { FileText, Copy, ExternalLink, Users } from "lucide-react";
+import { FileText, ExternalLink, Users } from "lucide-react";
 import Link from "next/link";
 import { CopyButton } from "@/components/ui/copy-button";
+
+interface FormWithCount {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  description: string | null;
+  _count: {
+    submissions: number;
+  };
+}
 
 export default async function CustomerFormsPage() {
   const session = await getServerSession(authOptions);
@@ -69,7 +80,7 @@ export default async function CustomerFormsPage() {
           gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))", 
           gap: "20px" 
         }}>
-          {forms.map((form) => {
+          {forms.map((form: FormWithCount) => {
             const formUrl = `${baseUrl}/f/${form.slug}`;
             
             return (
