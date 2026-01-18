@@ -23,10 +23,19 @@ interface Form {
   slug: string;
 }
 
+interface ActionConfig {
+  templateId?: string;
+  delayMinutes?: number;
+  sendToSubmitter?: boolean;
+  emailField?: string;
+  customEmail?: string;
+  [key: string]: unknown;
+}
+
 interface Action {
   id: string;
   type: string;
-  config: Record<string, unknown>;
+  config: ActionConfig;
 }
 
 const triggerTypes = [

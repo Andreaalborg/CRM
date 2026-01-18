@@ -17,7 +17,7 @@ export default async function CustomerLayout({
   }
 
   return (
-    <SessionProvider session={session}>
+    <SessionProvider>
       <div style={{ 
         minHeight: "100vh", 
         background: "#f8fafc",

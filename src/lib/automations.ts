@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { sendEmail, replaceVariables } from "./email";
+import { Prisma } from "@prisma/client";
 
 interface SubmissionData {
   id: string;
@@ -10,7 +11,7 @@ interface SubmissionData {
 
 interface AutomationAction {
   type: string;
-  config: Record<string, unknown>;
+  config: unknown;
   order: number;
 }
 
@@ -100,9 +101,9 @@ async function executeAutomation(
     
     // Hvis det er en WAIT_DELAY, akkumuler forsinkelsen og planlegg neste aksjon
     if (action.type === "WAIT_DELAY") {
-      const delayConfig = action.config as { delayAmount?: number; delayUnit?: string };
-      const delayAmount = delayConfig.delayAmount || 1;
-      const delayUnit = delayConfig.delayUnit || "days";
+      const actionConfig = (action.config || {}) as Record<string, unknown>;
+      const delayAmount = (actionConfig.delayAmount as number) || 1;
+      const delayUnit = (actionConfig.delayUnit as string) || "days";
       
       // Konverter til minutter
       let delayMinutes = delayAmount;
@@ -129,7 +130,7 @@ async function executeAutomation(
           scheduledFor,
           payload: {
             submissionData: submission.data,
-          },
+          } as Prisma.InputJsonValue,
         },
       });
       
@@ -211,7 +212,7 @@ async function executeSendEmailAction(
     textContent: string | null;
   } | null
 ): Promise<void> {
-  const config = action.config;
+  const config = (action.config || {}) as Record<string, unknown>;
   
   // Finn mottaker
   let recipientEmail: string | undefined;
@@ -285,7 +286,8 @@ async function executeSendEmailAction(
  * Vent-aksjon (for fremtidig bruk med bakgrunnsjobber)
  */
 async function executeWaitAction(action: AutomationAction): Promise<void> {
-  const delayMinutes = (action.config.delayMinutes as number) || 0;
+  const config = (action.config || {}) as Record<string, unknown>;
+  const delayMinutes = (config.delayMinutes as number) || 0;
   
   // For nå: Bare logg at vi skulle ventet
   // I fremtiden: Bruk en jobb-kø som Bull eller Inngest
@@ -299,7 +301,8 @@ async function executeUpdateStatusAction(
   action: AutomationAction,
   submission: SubmissionData
 ): Promise<void> {
-  const newStatus = action.config.status as string;
+  const config = (action.config || {}) as Record<string, unknown>;
+  const newStatus = config.status as string;
   
   if (!newStatus) {
     console.warn("No status specified for UPDATE_SUBMISSION_STATUS action");
@@ -321,7 +324,8 @@ async function executeSendNotificationAction(
   action: AutomationAction,
   submission: SubmissionData
 ): Promise<void> {
-  const notifyEmail = action.config.notifyEmail as string;
+  const config = (action.config || {}) as Record<string, unknown>;
+  const notifyEmail = config.notifyEmail as string;
   
   if (!notifyEmail) {
     console.warn("No notify email specified");

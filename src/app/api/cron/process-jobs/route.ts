@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { sendEmail, replaceVariables } from "@/lib/email";
+import { Prisma } from "@prisma/client";
 
 // Denne ruten kjøres via cron job for å prosessere planlagte jobber
 // Vercel cron: vercel.json -> { "crons": [{ "path": "/api/cron/process-jobs", "schedule": "*/5 * * * *" }] }
@@ -83,7 +84,7 @@ export async function GET(request: NextRequest) {
                 scheduledFor: nextRun,
                 isRecurring: true,
                 recurringPattern: job.recurringPattern,
-                payload: job.payload,
+                payload: job.payload as Prisma.InputJsonValue,
               },
             });
           }
@@ -129,7 +130,7 @@ export async function GET(request: NextRequest) {
 
 interface ActionWithTemplate {
   type: string;
-  config: Record<string, unknown>;
+  config: unknown;
   emailTemplate?: {
     id: string;
     subject: string;
@@ -409,7 +410,7 @@ async function processDateFieldTriggers(): Promise<void> {
                 metadata: {
                   ...metadata,
                   [`${automation.id}_years`]: [...processedYears, now.getFullYear()],
-                },
+                } as Prisma.InputJsonValue,
               },
             });
           }
