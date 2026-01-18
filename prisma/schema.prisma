@@ -120,6 +120,7 @@ model Organization {
   submissions Submission[]
   emailTemplates EmailTemplate[]
   automations Automation[]
+  invoices    Invoice[]
 
   @@index([slug])
 }
@@ -575,4 +576,131 @@ model SubmissionTag {
   @@unique([submissionId, tagId])
   @@index([submissionId])
   @@index([tagId])
+}
+
+// ============================================
+// FAKTURERING
+// ============================================
+
+enum InvoiceStatus {
+  DRAFT       // Utkast - ikke sendt
+  SENT        // Sendt til kunde
+  PAID        // Betalt
+  PARTIALLY_PAID // Delbetalt
+  OVERDUE     // Forfalt
+  CANCELLED   // Kansellert
+}
+
+model Invoice {
+  id              String        @id @default(cuid())
+  organizationId  String
+  
+  // Fakturanummer
+  invoiceNumber   String        // F.eks. "2024-001"
+  
+  // Kunde-info (lagres på fakturaen for historikk)
+  customerName    String
+  customerEmail   String
+  customerAddress String?
+  customerCity    String?
+  customerPostalCode String?
+  customerCountry String?       @default("Norge")
+  customerOrgNumber String?     // Org.nummer
+  
+  // Referanse til submission/lead (valgfritt)
+  submissionId    String?
+  
+  // Datoer
+  issueDate       DateTime      @default(now())
+  dueDate         DateTime
+  paidAt          DateTime?
+  
+  // Beløp
+  subtotal        Decimal       @db.Decimal(10, 2)  // Før MVA
+  vatRate         Decimal       @default(25)  @db.Decimal(5, 2)  // MVA-sats (25%)
+  vatAmount       Decimal       @db.Decimal(10, 2)  // MVA-beløp
+  total           Decimal       @db.Decimal(10, 2)  // Totalt inkl. MVA
+  paidAmount      Decimal       @default(0) @db.Decimal(10, 2)  // Betalt beløp
+  
+  // Valuta
+  currency        String        @default("NOK")
+  
+  // Status
+  status          InvoiceStatus @default(DRAFT)
+  
+  // Ekstra info
+  notes           String?       @db.Text  // Notater på fakturaen
+  internalNotes   String?       @db.Text  // Interne notater (kun for admin)
+  reference       String?       // Kundens referanse
+  
+  // Betalingsinfo (vises på fakturaen)
+  bankAccount     String?       // Kontonummer
+  paymentTerms    String?       @default("Betalingsfrist: 14 dager")
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  
+  // Relasjoner
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  items           InvoiceItem[]
+  payments        InvoicePayment[]
+  emailLogs       InvoiceEmailLog[]
+
+  @@unique([organizationId, invoiceNumber])
+  @@index([organizationId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([customerEmail])
+}
+
+model InvoiceItem {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  
+  description String
+  quantity    Decimal  @db.Decimal(10, 2)
+  unitPrice   Decimal  @db.Decimal(10, 2)
+  amount      Decimal  @db.Decimal(10, 2)  // quantity * unitPrice
+  
+  // Valgfri enhet (stk, timer, etc.)
+  unit        String?  @default("stk")
+  
+  // Rekkefølge
+  order       Int      @default(0)
+  
+  createdAt   DateTime @default(now())
+  
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+}
+
+model InvoicePayment {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  
+  amount      Decimal  @db.Decimal(10, 2)
+  method      String?  // "bank", "vipps", "kontant", etc.
+  reference   String?  // Betalingsreferanse
+  note        String?
+  
+  paidAt      DateTime @default(now())
+  createdAt   DateTime @default(now())
+  
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+}
+
+model InvoiceEmailLog {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  
+  to          String
+  subject     String
+  sentAt      DateTime @default(now())
+  
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
 }

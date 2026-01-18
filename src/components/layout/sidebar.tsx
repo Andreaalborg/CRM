@@ -17,6 +17,7 @@ import {
   Building2,
   BarChart3,
   Shield,
+  Receipt,
 } from "lucide-react";
 import { cn, getInitials } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage, Button } from "@/components/ui";
@@ -59,6 +60,11 @@ const adminNavigation = [
     name: "Agency Admin",
     href: "/dashboard/admin",
     icon: Shield,
+  },
+  {
+    name: "Fakturaer",
+    href: "/dashboard/invoices",
+    icon: Receipt,
   },
 ];
 
