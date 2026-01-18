@@ -2,11 +2,12 @@
 
 import { useState, useCallback, useRef } from "react";
 import { Card, CardContent, Button, Input } from "@/components/ui";
+import { ImageUpload } from "@/components/ui/image-upload";
 import { 
   Type, Image, MousePointer, Minus, Layout, 
   Trash2, ChevronUp, ChevronDown,
   Plus, Eye, Code, Save, Palette, FileCode,
-  ImagePlus, Settings2
+  ImagePlus, Settings2, Link2
 } from "lucide-react";
 
 // Block types
@@ -742,7 +743,20 @@ export function EmailTemplateEditor({
                   <>
                     <div>
                       <label style={{ fontSize: "12px", fontWeight: "500", color: "#6b7280", marginBottom: "6px", display: "block" }}>
-                        Logo URL
+                        Last opp logo
+                      </label>
+                      <ImageUpload
+                        value={selectedBlock.content}
+                        onChange={(url) => updateBlock(selectedBlock.id, { content: url })}
+                        folder="logos"
+                        placeholder="Klikk for å laste opp logo"
+                        previewHeight={80}
+                      />
+                    </div>
+                    <div style={{ marginTop: "8px" }}>
+                      <label style={{ fontSize: "12px", fontWeight: "500", color: "#6b7280", marginBottom: "6px", display: "flex", alignItems: "center", gap: "4px" }}>
+                        <Link2 style={{ width: "12px", height: "12px" }} />
+                        Eller bruk URL
                       </label>
                       <Input
                         value={selectedBlock.content}
@@ -770,6 +784,32 @@ export function EmailTemplateEditor({
                         <option value="200px">Stor (200px)</option>
                         <option value="250px">Ekstra stor (250px)</option>
                       </select>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: "12px", fontWeight: "500", color: "#6b7280", marginBottom: "6px", display: "block" }}>
+                        Justering
+                      </label>
+                      <div style={{ display: "flex", gap: "4px" }}>
+                        {["left", "center", "right"].map(align => (
+                          <button
+                            key={align}
+                            onClick={() => updateBlockStyle(selectedBlock.id, "textAlign", align)}
+                            style={{
+                              flex: 1,
+                              padding: "8px",
+                              border: "1px solid #e5e7eb",
+                              borderRadius: "6px",
+                              background: selectedBlock.styles.textAlign === align ? "#6366f1" : "#fff",
+                              color: selectedBlock.styles.textAlign === align ? "#fff" : "#374151",
+                              cursor: "pointer",
+                              fontSize: "12px",
+                              fontWeight: "500",
+                            }}
+                          >
+                            {align === "left" ? "Venstre" : align === "center" ? "Midt" : "Høyre"}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </>
                 )}
@@ -820,16 +860,75 @@ export function EmailTemplateEditor({
 
                 {/* Image settings */}
                 {selectedBlock.type === "image" && (
-                  <div>
-                    <label style={{ fontSize: "12px", fontWeight: "500", color: "#6b7280", marginBottom: "6px", display: "block" }}>
-                      Bilde-URL
-                    </label>
-                    <Input
-                      value={selectedBlock.content}
-                      onChange={(e) => updateBlock(selectedBlock.id, { content: e.target.value })}
-                      placeholder="https://..."
-                    />
-                  </div>
+                  <>
+                    <div>
+                      <label style={{ fontSize: "12px", fontWeight: "500", color: "#6b7280", marginBottom: "6px", display: "block" }}>
+                        Last opp bilde
+                      </label>
+                      <ImageUpload
+                        value={selectedBlock.content}
+                        onChange={(url) => updateBlock(selectedBlock.id, { content: url })}
+                        folder="email-images"
+                        placeholder="Klikk for å laste opp bilde"
+                        previewHeight={140}
+                      />
+                    </div>
+                    <div style={{ marginTop: "8px" }}>
+                      <label style={{ fontSize: "12px", fontWeight: "500", color: "#6b7280", marginBottom: "6px", display: "flex", alignItems: "center", gap: "4px" }}>
+                        <Link2 style={{ width: "12px", height: "12px" }} />
+                        Eller bruk URL
+                      </label>
+                      <Input
+                        value={selectedBlock.content}
+                        onChange={(e) => updateBlock(selectedBlock.id, { content: e.target.value })}
+                        placeholder="https://..."
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: "12px", fontWeight: "500", color: "#6b7280", marginBottom: "6px", display: "block" }}>
+                        Bredde
+                      </label>
+                      <select
+                        value={selectedBlock.styles.width || "100%"}
+                        onChange={(e) => updateBlockStyle(selectedBlock.id, "width", e.target.value)}
+                        style={{
+                          width: "100%",
+                          padding: "8px 12px",
+                          border: "1px solid #e5e7eb",
+                          borderRadius: "6px",
+                          fontSize: "14px"
+                        }}
+                      >
+                        <option value="100%">Full bredde</option>
+                        <option value="75%">75%</option>
+                        <option value="50%">50%</option>
+                        <option value="300px">300px</option>
+                        <option value="200px">200px</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: "12px", fontWeight: "500", color: "#6b7280", marginBottom: "6px", display: "block" }}>
+                        Avrunding
+                      </label>
+                      <select
+                        value={selectedBlock.styles.borderRadius || "8px"}
+                        onChange={(e) => updateBlockStyle(selectedBlock.id, "borderRadius", e.target.value)}
+                        style={{
+                          width: "100%",
+                          padding: "8px 12px",
+                          border: "1px solid #e5e7eb",
+                          borderRadius: "6px",
+                          fontSize: "14px"
+                        }}
+                      >
+                        <option value="0">Ingen</option>
+                        <option value="4px">Liten (4px)</option>
+                        <option value="8px">Normal (8px)</option>
+                        <option value="16px">Stor (16px)</option>
+                        <option value="50%">Sirkel</option>
+                      </select>
+                    </div>
+                  </>
                 )}
 
                 {/* Text styling */}
