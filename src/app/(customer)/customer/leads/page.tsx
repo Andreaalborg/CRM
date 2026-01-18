@@ -7,6 +7,17 @@ import { formatDateTime, formatRelativeTime } from "@/lib/utils";
 import Link from "next/link";
 import { ExportButton } from "@/components/leads";
 
+interface SubmissionWithForm {
+  id: string;
+  data: unknown;
+  status: string;
+  createdAt: Date;
+  form: {
+    name: string;
+    slug: string;
+  };
+}
+
 const statusColors: Record<string, "info" | "warning" | "success" | "error" | "muted"> = {
   NEW: "info",
   CONTACTED: "warning",
@@ -143,7 +154,7 @@ export default async function CustomerLeadsPage() {
                 </tr>
               </thead>
               <tbody>
-                {submissions.map((submission) => {
+                {submissions.map((submission: SubmissionWithForm) => {
                   const data = submission.data as Record<string, unknown>;
                   const name = (data.name as string) || (data.navn as string) || "Ukjent";
                   const email = (data.email as string) || (data.epost as string) || "";
