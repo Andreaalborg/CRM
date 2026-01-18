@@ -6,6 +6,14 @@ import { Users, FileText, TrendingUp, Clock } from "lucide-react";
 import Link from "next/link";
 import { formatRelativeTime } from "@/lib/utils";
 
+interface LeadWithForm {
+  id: string;
+  data: unknown;
+  status: string;
+  createdAt: Date;
+  form: { name: string };
+}
+
 export default async function CustomerDashboard() {
   const session = await getServerSession(authOptions);
   
@@ -163,7 +171,7 @@ export default async function CustomerDashboard() {
             </p>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              {recentLeads.map((lead) => {
+              {recentLeads.map((lead: LeadWithForm) => {
                 const data = lead.data as Record<string, unknown>;
                 const name = (data.name as string) || (data.navn as string) || "Ukjent";
                 const email = (data.email as string) || (data.epost as string) || "";
