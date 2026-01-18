@@ -8,6 +8,16 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { formatDateTime, formatRelativeTime } from "@/lib/utils";
 
+interface OrgWithDetails {
+  id: string;
+  name: string;
+  plan: string | null;
+  createdAt: Date;
+  _count: { users: number; forms: number; submissions: number };
+  users: { name: string | null; email: string }[];
+  settings: { primaryColor: string | null; secondaryColor: string | null } | null;
+}
+
 export default async function AdminCustomersPage() {
   const session = await getServerSession(authOptions);
   
@@ -79,7 +89,7 @@ export default async function AdminCustomersPage() {
 
         {/* Kundeliste */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "16px" }}>
-          {organizations.map((org) => {
+          {organizations.map((org: OrgWithDetails) => {
             const primaryContact = org.users[0];
             
             return (
