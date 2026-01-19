@@ -77,7 +77,13 @@ export async function POST(request: NextRequest) {
 
     console.log(`Fant ${dueRecurring.length} gjentakende fakturaer å prosessere`);
 
-    const results = [];
+    const results: Array<{
+      recurringId: string;
+      invoiceId?: string;
+      invoiceNumber?: string;
+      success: boolean;
+      error?: string;
+    }> = [];
 
     for (const recurring of dueRecurring) {
       try {
