@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle, Button } from "@/components/ui";
 import { 
   Plus, FileText, Clock, CheckCircle, AlertTriangle, 
-  Search, Filter, Download, Mail, Eye, MoreHorizontal
+  Search, Filter, Download, Mail, Eye, MoreHorizontal, RefreshCw
 } from "lucide-react";
 
 interface Invoice {
@@ -113,12 +113,20 @@ export default function InvoicesPage() {
             Opprett og administrer fakturaer
           </p>
         </div>
-        <Link href="/dashboard/invoices/new">
-          <Button>
-            <Plus style={{ width: "16px", height: "16px", marginRight: "8px" }} />
-            Ny faktura
-          </Button>
-        </Link>
+        <div style={{ display: "flex", gap: "12px" }}>
+          <Link href="/dashboard/invoices/recurring">
+            <Button variant="outline">
+              <RefreshCw style={{ width: "16px", height: "16px", marginRight: "8px" }} />
+              Gjentakende
+            </Button>
+          </Link>
+          <Link href="/dashboard/invoices/new">
+            <Button>
+              <Plus style={{ width: "16px", height: "16px", marginRight: "8px" }} />
+              Ny faktura
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Stats Cards */}

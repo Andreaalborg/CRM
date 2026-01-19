@@ -699,8 +699,97 @@ model InvoiceEmailLog {
   to          String
   subject     String
   sentAt      DateTime @default(now())
+  type        String   @default("invoice") // "invoice", "reminder", "receipt"
   
   invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   @@index([invoiceId])
+}
+
+// ============================================
+// GJENTAKENDE FAKTURAER (Abonnementer)
+// ============================================
+
+enum RecurringInterval {
+  WEEKLY      // Ukentlig
+  BIWEEKLY    // Annenhver uke
+  MONTHLY     // Månedlig
+  QUARTERLY   // Kvartalsvis
+  BIANNUALLY  // Halvårlig
+  YEARLY      // Årlig
+}
+
+enum RecurringStatus {
+  ACTIVE      // Aktiv - genererer fakturaer
+  PAUSED      // Pauset midlertidig
+  CANCELLED   // Avsluttet
+}
+
+model RecurringInvoice {
+  id              String            @id @default(cuid())
+  organizationId  String
+  
+  // Abonnementsnavn
+  name            String            // F.eks. "Månedlig vedlikehold"
+  
+  // Kunde-info
+  customerName    String
+  customerEmail   String
+  customerAddress String?
+  customerCity    String?
+  customerPostalCode String?
+  customerCountry String?           @default("Norge")
+  customerOrgNumber String?
+  
+  // Gjentakelse
+  interval        RecurringInterval
+  intervalCount   Int               @default(1)  // F.eks. 2 for "hver 2. måned"
+  
+  // Datoer
+  startDate       DateTime          // Når abonnementet starter
+  endDate         DateTime?         // Valgfri sluttdato
+  nextInvoiceDate DateTime          // Neste fakturadato
+  lastInvoiceDate DateTime?         // Siste faktura generert
+  
+  // Fast faktura-innhold
+  items           Json              // Array av { description, quantity, unitPrice, unit }
+  subtotal        Decimal           @db.Decimal(10, 2)
+  vatRate         Decimal           @default(25) @db.Decimal(5, 2)
+  vatAmount       Decimal           @db.Decimal(10, 2)
+  total           Decimal           @db.Decimal(10, 2)
+  
+  // Betalingsbetingelser
+  paymentDueDays  Int               @default(14)  // Antall dager til forfall
+  bankAccount     String?
+  paymentTerms    String?
+  notes           String?           @db.Text
+  
+  // Status
+  status          RecurringStatus   @default(ACTIVE)
+  
+  // Statistikk
+  invoicesGenerated Int             @default(0)
+  totalRevenue    Decimal           @default(0) @db.Decimal(12, 2)
+  
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  
+  // Relasjoner - ingen direkte relasjon til Organization foreløpig for å unngå migrerings-issues
+  generatedInvoices RecurringInvoiceLog[]
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([nextInvoiceDate])
+}
+
+model RecurringInvoiceLog {
+  id                  String           @id @default(cuid())
+  recurringInvoiceId  String
+  invoiceId           String           // ID til generert faktura
+  
+  generatedAt         DateTime         @default(now())
+  
+  recurringInvoice    RecurringInvoice @relation(fields: [recurringInvoiceId], references: [id], onDelete: Cascade)
+
+  @@index([recurringInvoiceId])
 }

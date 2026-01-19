@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, Button, Input } from "@/components/ui";
 import { 
   ArrowLeft, Download, Mail, CreditCard, CheckCircle,
-  Clock, AlertTriangle, Trash2, Edit, Printer, Copy
+  Clock, AlertTriangle, Trash2, Edit, Printer, Copy, Send, Bell, Receipt
 } from "lucide-react";
 import dynamic from "next/dynamic";
 
@@ -103,6 +103,12 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ invoic
   const [paymentMethod, setPaymentMethod] = useState("bank");
   const [paymentReference, setPaymentReference] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // E-post modal state
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailType, setEmailType] = useState<"invoice" | "reminder" | "receipt">("invoice");
+  const [customMessage, setCustomMessage] = useState("");
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
 
   useEffect(() => {
     fetchInvoice();
@@ -188,6 +194,44 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ invoic
     }
   };
 
+  const handleSendEmail = async () => {
+    if (!invoice) return;
+    setIsSendingEmail(true);
+
+    try {
+      const res = await fetch(`/api/invoices/${invoiceId}/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: emailType,
+          customMessage: customMessage || undefined,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        alert(`E-post sendt til ${invoice.customerEmail}`);
+        await fetchInvoice();
+        setShowEmailModal(false);
+        setCustomMessage("");
+      } else {
+        alert(data.error || "Kunne ikke sende e-post");
+      }
+    } catch (error) {
+      console.error("Error sending email:", error);
+      alert("Kunne ikke sende e-post");
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
+  const openEmailModal = (type: "invoice" | "reminder" | "receipt") => {
+    setEmailType(type);
+    setCustomMessage("");
+    setShowEmailModal(true);
+  };
+
   if (isLoading) {
     return (
       <div style={{ padding: "40px", textAlign: "center" }}>
@@ -258,11 +302,34 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ invoic
             </p>
           </div>
           
-          <div style={{ display: "flex", gap: "12px" }}>
+          <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+            {/* Send faktura knapper */}
             {invoice.status === "DRAFT" && (
-              <Button variant="outline" onClick={handleMarkAsSent}>
-                <Mail size={16} style={{ marginRight: "8px" }} />
-                Marker som sendt
+              <Button onClick={() => openEmailModal("invoice")}>
+                <Send size={16} style={{ marginRight: "8px" }} />
+                Send faktura
+              </Button>
+            )}
+            {invoice.status === "SENT" && (
+              <Button variant="outline" onClick={() => openEmailModal("reminder")}>
+                <Bell size={16} style={{ marginRight: "8px" }} />
+                Send påminnelse
+              </Button>
+            )}
+            {invoice.status === "OVERDUE" && (
+              <Button 
+                variant="outline" 
+                onClick={() => openEmailModal("reminder")}
+                style={{ borderColor: "#fecaca", color: "#dc2626" }}
+              >
+                <AlertTriangle size={16} style={{ marginRight: "8px" }} />
+                Send purring
+              </Button>
+            )}
+            {invoice.status === "PAID" && (
+              <Button variant="outline" onClick={() => openEmailModal("receipt")}>
+                <Receipt size={16} style={{ marginRight: "8px" }} />
+                Send kvittering
               </Button>
             )}
             <InvoicePDFDownload invoice={invoice} />
@@ -678,6 +745,134 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ invoic
                     style={{ flex: 1 }}
                   >
                     {isSubmitting ? "Lagrer..." : "Registrer"}
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* E-post modal */}
+      {showEmailModal && (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          background: "rgba(0,0,0,0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 50
+        }}>
+          <Card style={{ width: "480px" }}>
+            <CardHeader>
+              <CardTitle>
+                {emailType === "invoice" && "Send faktura på e-post"}
+                {emailType === "reminder" && "Send betalingspåminnelse"}
+                {emailType === "receipt" && "Send betalingskvittering"}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                {/* Info-boks */}
+                <div style={{
+                  padding: "16px",
+                  background: emailType === "reminder" ? "#fef3c7" : emailType === "receipt" ? "#dcfce7" : "#dbeafe",
+                  borderRadius: "8px",
+                  fontSize: "14px"
+                }}>
+                  <p style={{ margin: "0 0 8px", fontWeight: "600", color: emailType === "reminder" ? "#92400e" : emailType === "receipt" ? "#166534" : "#1e40af" }}>
+                    {emailType === "invoice" && "📧 Fakturaen sendes til kunden"}
+                    {emailType === "reminder" && "⏰ Påminnelse om utestående faktura"}
+                    {emailType === "receipt" && "✅ Bekreftelse på mottatt betaling"}
+                  </p>
+                  <p style={{ margin: 0, color: "#6b7280" }}>
+                    <strong>Mottaker:</strong> {invoice.customerEmail}
+                  </p>
+                </div>
+
+                {/* Tilpasset melding */}
+                <div>
+                  <label style={{ fontSize: "13px", fontWeight: "500", display: "block", marginBottom: "6px" }}>
+                    Tilpasset melding (valgfritt)
+                  </label>
+                  <textarea
+                    value={customMessage}
+                    onChange={(e) => setCustomMessage(e.target.value)}
+                    placeholder="Legg til en personlig melding..."
+                    rows={4}
+                    style={{
+                      width: "100%",
+                      padding: "12px",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: "8px",
+                      fontSize: "14px",
+                      resize: "vertical",
+                    }}
+                  />
+                </div>
+
+                {/* Forhåndsvisning */}
+                <div style={{
+                  padding: "12px",
+                  background: "#f9fafb",
+                  borderRadius: "8px",
+                  fontSize: "13px",
+                  color: "#6b7280"
+                }}>
+                  <p style={{ margin: 0 }}>
+                    <strong>E-posten inkluderer:</strong>
+                  </p>
+                  <ul style={{ margin: "8px 0 0", paddingLeft: "20px" }}>
+                    {emailType === "invoice" && (
+                      <>
+                        <li>Fakturadetaljer med linjer</li>
+                        <li>Betalingsinformasjon</li>
+                        <li>Forfallsdato: {formatDate(invoice.dueDate)}</li>
+                      </>
+                    )}
+                    {emailType === "reminder" && (
+                      <>
+                        <li>Påminnelse om utestående beløp</li>
+                        <li>Gjenstående: {formatCurrency(remainingAmount)}</li>
+                        <li>Betalingsinformasjon</li>
+                      </>
+                    )}
+                    {emailType === "receipt" && (
+                      <>
+                        <li>Bekreftelse på betaling</li>
+                        <li>Betalt beløp: {formatCurrency(invoice.paidAmount)}</li>
+                        <li>Betalingsdato</li>
+                      </>
+                    )}
+                  </ul>
+                </div>
+
+                {/* Knapper */}
+                <div style={{ display: "flex", gap: "12px", marginTop: "8px" }}>
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowEmailModal(false)}
+                    style={{ flex: 1 }}
+                  >
+                    Avbryt
+                  </Button>
+                  <Button
+                    onClick={handleSendEmail}
+                    disabled={isSendingEmail}
+                    style={{ 
+                      flex: 1,
+                      background: emailType === "reminder" ? "#f59e0b" : emailType === "receipt" ? "#16a34a" : undefined 
+                    }}
+                  >
+                    {isSendingEmail ? (
+                      "Sender..."
+                    ) : (
+                      <>
+                        <Send size={16} style={{ marginRight: "8px" }} />
+                        Send e-post
+                      </>
+                    )}
                   </Button>
                 </div>
               </div>
