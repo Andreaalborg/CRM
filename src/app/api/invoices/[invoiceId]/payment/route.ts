@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { Decimal } from "@prisma/client/runtime/library";
 
 // POST /api/invoices/[invoiceId]/payment - Registrer betaling
 export async function POST(
@@ -49,15 +48,16 @@ export async function POST(
       }
     });
 
-    // Oppdater totalt betalt beløp
-    const newPaidAmount = new Decimal(invoice.paidAmount).plus(amount);
-    const total = new Decimal(invoice.total);
+    // Oppdater totalt betalt beløp - bruk Number for Decimal-verdier
+    const currentPaid = Number(invoice.paidAmount);
+    const newPaidAmount = currentPaid + Number(amount);
+    const total = Number(invoice.total);
     
     // Bestem ny status
     let newStatus = invoice.status;
-    if (newPaidAmount.gte(total)) {
+    if (newPaidAmount >= total) {
       newStatus = "PAID";
-    } else if (newPaidAmount.gt(0)) {
+    } else if (newPaidAmount > 0) {
       newStatus = "PARTIALLY_PAID";
     }
 
@@ -80,4 +80,5 @@ export async function POST(
     );
   }
 }
+
 

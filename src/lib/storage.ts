@@ -87,3 +87,4 @@ export function isValidFileSize(file: File, maxSizeMB: number = 5): boolean {
   return file.size <= maxSizeMB * 1024 * 1024;
 }
 
+

@@ -689,3 +689,4 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ invoic
   );
 }
 
+
