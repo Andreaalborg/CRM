@@ -1,10 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { uploadFile, isValidImageType, isValidFileSize } from "@/lib/storage";
 
 export async function POST(request: NextRequest) {
   try {
+    // Sjekk om Supabase er konfigurert
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+      return NextResponse.json(
+        { error: "Bildeopplasting er ikke konfigurert. Mangler Supabase-konfigurasjon." },
+        { status: 503 }
+      );
+    }
+    
+    // Dynamisk import for å unngå build-feil
+    const { uploadFile, isValidImageType, isValidFileSize } = await import("@/lib/storage");
+    
     const session = await getServerSession(authOptions);
     
     if (!session?.user) {

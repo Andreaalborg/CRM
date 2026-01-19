@@ -1,10 +1,21 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// Supabase client for storage
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+// Lazy initialization av Supabase client
+let supabaseClient: SupabaseClient | null = null;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+function getSupabase(): SupabaseClient {
+  if (supabaseClient) return supabaseClient;
+  
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Supabase miljøvariabler mangler. Sett NEXT_PUBLIC_SUPABASE_URL og NEXT_PUBLIC_SUPABASE_ANON_KEY');
+  }
+  
+  supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+  return supabaseClient;
+}
 
 const BUCKET_NAME = 'uploads';
 
@@ -26,6 +37,8 @@ export async function uploadFile(
     const fileExt = file.name.split('.').pop();
     const fileName = `${folder}/${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
 
+    const supabase = getSupabase();
+    
     // Last opp til Supabase Storage
     const { data, error } = await supabase.storage
       .from(BUCKET_NAME)
@@ -62,6 +75,7 @@ export async function uploadFile(
  */
 export async function deleteFile(filePath: string): Promise<boolean> {
   try {
+    const supabase = getSupabase();
     const { error } = await supabase.storage
       .from(BUCKET_NAME)
       .remove([filePath]);
