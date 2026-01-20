@@ -71,7 +71,7 @@ export async function PATCH(
     }
 
     const body = await req.json();
-    const { status, name, description } = body;
+    const { status, name, description, triggerType, triggerConfig, formId, actions } = body;
 
     // Oppdater automasjon
     const automation = await db.automation.update({
@@ -80,8 +80,32 @@ export async function PATCH(
         ...(status && { status }),
         ...(name && { name }),
         ...(description !== undefined && { description }),
+        ...(triggerType && { triggerType }),
+        ...(triggerConfig && { triggerConfig: triggerConfig as any }),
+        ...(formId !== undefined && { formId: formId || null }),
       },
     });
+
+    // Hvis actions er sendt med, oppdater dem
+    if (actions && Array.isArray(actions)) {
+      // Slett eksisterende actions
+      await db.automationAction.deleteMany({
+        where: { automationId }
+      });
+
+      // Opprett nye actions
+      for (const action of actions) {
+        await db.automationAction.create({
+          data: {
+            automationId,
+            type: action.type,
+            order: action.order || 0,
+            config: action.config as any,
+            emailTemplateId: action.emailTemplateId || null,
+          }
+        });
+      }
+    }
 
     // Logg aktivitet
     await db.activityLog.create({
