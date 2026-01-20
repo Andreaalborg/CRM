@@ -87,7 +87,7 @@ export function CalendarView({ events, onEventClick, onDateClick }: CalendarView
   };
 
   // Generer kalender-grid
-  const calendarDays = [];
+  const calendarDays: (number | null)[] = [];
   
   // Tomme celler før første dag
   for (let i = 0; i < startingDayOfWeek; i++) {
