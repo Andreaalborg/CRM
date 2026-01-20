@@ -18,6 +18,7 @@ import {
   BarChart3,
   Shield,
   Receipt,
+  CalendarDays,
 } from "lucide-react";
 import { cn, getInitials } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage, Button } from "@/components/ui";
@@ -27,6 +28,11 @@ const navigation = [
     name: "Dashboard",
     href: "/dashboard",
     icon: LayoutDashboard,
+  },
+  {
+    name: "Oversikt",
+    href: "/dashboard/oversikt",
+    icon: CalendarDays,
   },
   {
     name: "Skjemaer",
