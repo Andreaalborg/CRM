@@ -176,3 +176,6 @@ FOREIGN KEY ("recurringInvoiceId") REFERENCES "RecurringInvoice"("id") ON DELETE
 - Bruk `IF NOT EXISTS` i SQL
 - Eller kjør `npx prisma db pull` først for å synkronisere
 
+
+
+
