@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireCronAuth } from "@/lib/cron-auth";
 import { sendEmail, replaceVariables } from "@/lib/email";
+import { AUTO_EMAIL_DISABLED_MSG, isOwnerAddress } from "@/lib/email-guard";
 
 // Denne ruten kjøres via cron job for å prosessere planlagte jobber
 // Vercel cron: vercel.json -> { "crons": [{ "path": "/api/cron/process-jobs", "schedule": "*/5 * * * *" }] }
@@ -175,22 +176,16 @@ async function executeScheduledAction(
       const htmlContent = replaceVariables(action.emailTemplate.htmlContent, data);
       const fromEmail = process.env.EMAIL_FROM || "noreply@example.com";
 
-      await sendEmail({
-        to: recipientEmail,
-        subject,
-        html: htmlContent,
-        from: fromEmail,
-      });
-
-      // Logg e-post
+      // André-regelen: cron sender ALDRI e-post til kunder/innsendere. Logges som SKIPPED.
+      void htmlContent;
       await db.emailLog.create({
         data: {
           submissionId: job.submissionId,
           to: recipientEmail,
           from: fromEmail,
           subject,
-          status: "SENT",
-          sentAt: new Date(),
+          status: "SKIPPED",
+          errorMessage: AUTO_EMAIL_DISABLED_MSG,
         },
       });
       break;
@@ -227,6 +222,11 @@ async function executeScheduledAction(
             .map(([key, value]) => `<p><strong>${key}:</strong> ${value}</p>`)
             .join("");
 
+          // Interne varsler kun til eierens egne adresser
+          if (!(await isOwnerAddress(notifyEmail))) {
+            await db.emailLog.create({ data: { submissionId: job.submissionId, to: notifyEmail, from: process.env.EMAIL_FROM || "noreply", subject: `Påminnelse: Lead fra ${submission.form.name}`, status: "SKIPPED", errorMessage: AUTO_EMAIL_DISABLED_MSG } });
+            break;
+          }
           await sendEmail({
             to: notifyEmail,
             subject: `Påminnelse: Lead fra ${submission.form.name}`,

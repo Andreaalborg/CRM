@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { AUTO_EMAIL_DISABLED_MSG, isOwnerAddress } from "@/lib/email-guard";
 import { sendEmail, replaceVariables } from "./email";
 
 interface SubmissionData {
@@ -254,31 +255,19 @@ async function executeSendEmailAction(
   // Hent avsender e-post
   const fromEmail = process.env.EMAIL_FROM || "noreply@example.com";
 
-  // Send e-post
-  const result = await sendEmail({
-    to: recipientEmail,
-    subject,
-    html: htmlContent,
-    text: textContent,
-    from: fromEmail,
-    replyTo: config.replyTo as string | undefined,
-  });
-
-  // Logg e-post
+  // André-regelen: automasjoner sender ALDRI e-post til kunder/innsendere. Logges som SKIPPED i stedet.
   await db.emailLog.create({
     data: {
       submissionId: submission.id,
       to: recipientEmail,
       from: fromEmail,
       subject,
-      status: result.success ? "SENT" : "FAILED",
-      sentAt: result.success ? new Date() : null,
-      errorMessage: result.error,
-      externalId: result.messageId,
+      status: "SKIPPED",
+      errorMessage: AUTO_EMAIL_DISABLED_MSG,
     },
   });
-
-  console.log(`Email sent to ${recipientEmail}: ${result.success ? "success" : "failed"}`);
+  void htmlContent; void textContent;
+  console.log(`Automatisk e-post til ${recipientEmail} hoppet over (krever godkjenning)`);
 }
 
 /**
@@ -351,6 +340,12 @@ async function executeSendNotificationAction(
     <p><a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/leads">Se alle leads</a></p>
   `;
 
+  // Interne varsler er bare lov til eierens egne adresser
+  if (!(await isOwnerAddress(notifyEmail))) {
+    await db.emailLog.create({ data: { submissionId: submission.id, to: notifyEmail, from: process.env.EMAIL_FROM || "noreply", subject: `Ny innsending: ${form?.name || "Skjema"}`, status: "SKIPPED", errorMessage: AUTO_EMAIL_DISABLED_MSG } });
+    console.warn(`Varsel til ${notifyEmail} hoppet over (ikke eierens adresse)`);
+    return;
+  }
   await sendEmail({
     to: notifyEmail,
     subject: `Ny innsending: ${form?.name || "Skjema"}`,
