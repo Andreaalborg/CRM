@@ -2,7 +2,7 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Clock } from "lucide-react";
-import { completeNextStep, completeTask, postponeTask, moveDeal } from "@/lib/crm/actions";
+import { completeNextStep, completeTask, postponeTask, moveDeal, deleteCompany } from "@/lib/crm/actions";
 
 export function NextStepDoneButton({ dealId, label = "Gjort" }: { dealId: string; label?: string }) {
   const [pending, start] = useTransition();
@@ -42,6 +42,18 @@ export function ApproveButton({ dealId, navn }: { dealId: string; navn: string }
     <button type="button" className="crm-btn" disabled={pending} aria-label={`Godkjenn ${navn} for kontakt`}
       onClick={() => start(async () => { await moveDeal(dealId, "GODKJENT"); router.refresh(); })}>
       <Check className="h-4 w-4" aria-hidden="true" /> Godkjenn
+    </button>
+  );
+}
+
+export function DeleteCompanyButton({ id, navn }: { id: string; navn: string }) {
+  const [pending, start] = useTransition();
+  const router = useRouter();
+  return (
+    <button type="button" className="crm-btn-ghost text-red-800" disabled={pending}
+      onClick={() => confirm(`Slette «${navn}» med kontakter, deals, logg og oppgaver? Dette kan ikke angres.`) &&
+        start(async () => { const r = await deleteCompany(id); if (r.ok) router.push("/dashboard/crm/firma"); })}>
+      Slett firma
     </button>
   );
 }

@@ -7,7 +7,7 @@ import { STAGE_LABEL, expectedValue, formatNok, dueState, type Stage } from "@/l
 import { CollapsibleSection } from "@/components/crm/CollapsibleSection";
 import { StatusBadge, DueBadge } from "@/components/crm/StatusBadge";
 import { ActionForm, CompanyFields, Field, Choice, Area, KILDER, PAKKER, STEG } from "@/components/crm/Forms";
-import { NextStepDoneButton, TaskButtons } from "@/components/crm/ActionButtons";
+import { NextStepDoneButton, TaskButtons, DeleteCompanyButton } from "@/components/crm/ActionButtons";
 import { formatDate, formatDateTime } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -166,6 +166,7 @@ export default async function FirmaDetalj({ params }: { params: Promise<{ id: st
             <ActionForm action={updateCompany.bind(null, c.id)} submitLabel="Lagre firma" successText="Lagret">
               <CompanyFields c={c as unknown as Record<string, string | number | null>} />
             </ActionForm>
+            <div className="mt-6 border-t border-brand-border pt-4"><DeleteCompanyButton id={c.id} navn={c.navn} /></div>
           </CollapsibleSection>
         </div>
       </div>

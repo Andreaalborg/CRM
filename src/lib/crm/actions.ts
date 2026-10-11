@@ -355,3 +355,16 @@ export async function revokeApiKey(id: string): Promise<ActionResult> {
   revalidatePath("/dashboard/crm/innstillinger");
   return { ok: true, id };
 }
+
+/** Slett firma med kontakter, deals, aktiviteter og oppgaver (kun admin, audit-logges med navn/orgnr). */
+export async function deleteCompany(id: string): Promise<ActionResult> {
+  const user = await requireAdmin();
+  const c = await db.company.findUnique({ where: { id }, select: { navn: true, orgnr: true } });
+  if (!c) return { ok: false, error: "Fant ikke firma" };
+  await db.$transaction(async (tx) => {
+    await tx.company.delete({ where: { id } });
+    await audit(tx, user.id, "deleted", "company", id, { navn: c.navn, orgnr: c.orgnr });
+  });
+  revalidateCrm();
+  return { ok: true, id };
+}
