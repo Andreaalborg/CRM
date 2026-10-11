@@ -6,6 +6,10 @@ import { PageHeader } from "@/components/crm/PageHeader";
 import { StatusBadge, DueBadge } from "@/components/crm/StatusBadge";
 import { NextStepDoneButton, TaskButtons, ApproveButton } from "@/components/crm/ActionButtons";
 import { formatDate } from "@/lib/utils";
+import { OutreachQueue, type QueueItem } from "@/components/crm/OutreachQueue";
+import { emailHealth } from "@/lib/crm/mailer";
+import { draftBlockers, unsubUrls } from "@/lib/crm/outreach-actions";
+import { footer, STEG_LABEL } from "@/lib/crm/outreach-core";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +46,21 @@ export default async function IDagPage() {
     }),
   ]);
 
+  const [drafts, health] = await Promise.all([
+    db.outreachDraft.findMany({
+      where: { status: "UTKAST", planlagtFor: { lt: end } },
+      orderBy: [{ planlagtFor: "asc" }],
+      include: { company: { select: { navn: true } }, deal: { select: { kilde: true } } },
+    }),
+    emailHealth(),
+  ]);
+  const queue: QueueItem[] = await Promise.all(drafts.map(async (d) => ({
+    id: d.id, dealId: d.dealId, companyId: d.companyId, firma: d.company.navn, til: d.til, steg: STEG_LABEL[d.steg] ?? `Steg ${d.steg}`,
+    emne: d.emne, tekst: d.tekst, planlagt: d.planlagtFor.toISOString(),
+    footer: footer((await unsubUrls(d.token)).page, d.deal.kilde === "NETTSIDE" ? "virksomheten på deres egen nettside" : "virksomheten i Enhetsregisteret (Brønnøysund) og på deres egen nettside"),
+    blockers: await draftBlockers(d.id),
+  })));
+
   const inDialog = openDeals.filter((d) => ["KONTAKTET", "SVART", "MOTE"].includes(d.stage)).length;
   const offers = openDeals.filter((d) => d.stage === "TILBUD");
   const pipelineValue = openDeals.reduce((s, d) => s + expectedValue(d.sannsynlighet, d.verdi), 0);
@@ -71,6 +90,8 @@ export default async function IDagPage() {
           </div>
         ))}
       </section>
+
+      <OutreachQueue items={queue} health={health} />
 
       {toApprove.length > 0 && (
         <section className="crm-card mb-6 p-4 sm:p-6" aria-labelledby="godkj">

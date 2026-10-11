@@ -852,9 +852,11 @@ model Company {
   salgsvinkel   String?
   demoUrl       String?
   notater       String?
+  slettesDato   DateTime? // fase 3 (GDPR): 6 mnd etter siste aktivitet, settes av cron
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  outreach   OutreachDraft[]
   contacts   Contact[]
   deals      Deal[]
   activities CrmActivity[]
@@ -910,6 +912,7 @@ model Deal {
   company    Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   activities CrmActivity[]
   tasks      CrmTask[]
+  outreach   OutreachDraft[]
 
   @@index([companyId])
   @@index([stage, position])
@@ -984,4 +987,53 @@ model ApiRateBucket {
   count       Int      @default(0)
 
   @@id([key, windowStart])
+}
+
+// ---------- Fase 3: oppfølging med godkjenning ----------
+enum OutreachStatus {
+  UTKAST       // venter på André
+  SENDT        // André trykket Send (godkjentAvId satt)
+  HOPPET_OVER  // André hoppet over
+  STOPPET      // sekvensen stoppet (svar, stage-endring, avmelding)
+  FEILET       // sendingen feilet (kan prøves igjen manuelt)
+}
+
+/// Ett e-postutkast i oppfølgingssekvensen (dag 0/4/10). Fungerer også som e-postlogg:
+/// hver SENDT-rad har godkjentAvId = brukeren som trykket Send.
+model OutreachDraft {
+  id           String         @id @default(cuid())
+  companyId    String
+  dealId       String
+  steg         Int            // 0 = dag 0, 1 = dag 4, 2 = dag 10
+  til          String
+  emne         String
+  tekst        String         // brødtekst uten fast bunntekst (avsender, art. 14, avmelding legges på ved sending)
+  status       OutreachStatus @default(UTKAST)
+  planlagtFor  DateTime
+  token        String         @unique // avmeldingstoken (offentlig side /avmeld/<token>)
+  godkjentAvId String?
+  godkjentDato DateTime?
+  sendtDato    DateTime?
+  providerId   String?
+  dryRun       Boolean        @default(false)
+  feil         String?
+  stoppGrunn   String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  deal    Deal    @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@unique([dealId, steg])
+  @@index([status, planlagtFor])
+  @@index([sendtDato])
+}
+
+/// Permanent sperreliste. Bare hash (sha256) av normalisert e-post eller orgnr lagres. Slettes aldri av GDPR-cron.
+model Suppression {
+  id        String   @id @default(cuid())
+  hash      String   @unique
+  type      String   // "epost" | "orgnr"
+  grunn     String   // avmelding | nei | reservasjon | manuell
+  createdAt DateTime @default(now())
 }

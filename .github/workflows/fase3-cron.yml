@@ -1,0 +1,23 @@
+# Fase 3: trigger CRM-cron hvert 30. minutt (Vercel Hobby kjører bare daglig cron).
+# Endepunktet lager KUN utkast og kjører GDPR-opprydding – det sender aldri e-post.
+# Krever repo-secret CRON_SECRET (samme verdi som CRON_SECRET i Vercel-prosjektet «crm»).
+name: CRM fase 3 cron
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+permissions: {}
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Kall /api/cron/fase3
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then echo "::error::Repo-secret CRON_SECRET mangler"; exit 1; fi
+          code=$(curl -sS -o resp.json -w '%{http_code}' --max-time 60 -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" https://crm.intellisenseai.no/api/cron/fase3)
+          cat resp.json; echo
+          test "$code" = "200"

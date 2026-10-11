@@ -253,6 +253,10 @@ export async function moveDeal(
       },
     });
     await audit(tx, user.id, "moved", "deal", dealId, { from: deal.stage, to });
+    // Fase 3: stage-endring ut av Godkjent/Kontaktet stopper oppfølgingssekvensen umiddelbart
+    if (to !== "GODKJENT" && to !== "KONTAKTET") {
+      await tx.outreachDraft.updateMany({ where: { dealId, status: "UTKAST" }, data: { status: "STOPPET", stoppGrunn: `Stage endret til ${STAGE_LABEL[to]}` } });
+    }
   });
   revalidateCrm(deal.companyId);
   return { ok: true, id: dealId };
