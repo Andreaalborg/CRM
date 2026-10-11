@@ -3,6 +3,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { db } from "./db";
+import { hashLoginToken, tokenUsable } from "./portal/core";
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(db) as NextAuthOptions["adapter"],
@@ -55,6 +56,23 @@ export const authOptions: NextAuthOptions = {
           organizationId: user.organizationId,
           organizationName: user.organization?.name,
         };
+      },
+    }),
+    // Fase 4: magisk lenke (engangstoken, kun kundebrukere). Tokenet merkes brukt atomisk.
+    CredentialsProvider({
+      id: "magic-link",
+      name: "magic-link",
+      credentials: { token: { label: "Token", type: "text" } },
+      async authorize(credentials) {
+        const token = credentials?.token;
+        if (!token || token.length < 30) throw new Error("Ugyldig eller utløpt lenke");
+        const t = await db.loginToken.findUnique({ where: { tokenHash: hashLoginToken(token) } });
+        if (!tokenUsable(t)) throw new Error("Ugyldig eller utløpt lenke");
+        const claimed = await db.loginToken.updateMany({ where: { id: t!.id, usedAt: null }, data: { usedAt: new Date() } });
+        if (claimed.count !== 1) throw new Error("Lenken er allerede brukt");
+        const user = await db.user.findUnique({ where: { id: t!.userId }, include: { organization: true } });
+        if (!user || user.role !== "CUSTOMER" || !user.organizationId) throw new Error("Ugyldig eller utløpt lenke");
+        return { id: user.id, email: user.email, name: user.name, image: user.image, role: user.role, organizationId: user.organizationId, organizationName: user.organization?.name };
       },
     }),
   ],

@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && if [ \"$VERCEL_ENV\" = \"production\" ]; then prisma migrate deploy && node scripts/seed-bot-keys.mjs; fi && next build",
+    "build": "prisma generate && if [ \"$VERCEL_ENV\" = \"production\" ]; then prisma migrate deploy && node scripts/seed-bot-keys.mjs && node scripts/pilot-seed.mjs; fi && next build",
     "start": "next start",
     "lint": "eslint",
     "postinstall": "prisma generate",

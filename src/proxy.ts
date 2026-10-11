@@ -12,10 +12,12 @@ export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
   const isApi = pathname.startsWith("/api/");
+  // Fase 4: innloggingssidene for kundeportalen er offentlige
+  if (pathname === "/customer/login" || pathname.startsWith("/customer/login/")) return NextResponse.next();
 
   if (!token) {
     if (isApi) return NextResponse.json({ error: "Ikke autorisert" }, { status: 401 });
-    const url = new URL("/login", req.url);
+    const url = new URL(pathname.startsWith("/customer") ? "/customer/login" : "/login", req.url);
     url.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(url);
   }

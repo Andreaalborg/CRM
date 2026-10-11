@@ -26,6 +26,7 @@ model User {
   name           String?
   image          String?
   role           UserRole  @default(CUSTOMER)
+  notifyNewSubmissions Boolean @default(false) // fase 4: kunden slår selv på varsel om nye innsendinger (AV som standard)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -280,6 +281,8 @@ model Submission {
   // Lead-håndtering
   status         SubmissionStatus @default(NEW)
   notes          String?          @db.Text
+  readAt         DateTime?        // fase 4: første gang kunden åpnet innsendingen (ulest-markering)
+  handledAt      DateTime?        // fase 4: kunden satte «Håndtert»
   
   // Ekstra metadata (notater, tags, etc.)
   metadata       Json?
@@ -1037,4 +1040,18 @@ model Suppression {
   type      String   // "epost" | "orgnr"
   grunn     String   // avmelding | nei | reservasjon | manuell
   createdAt DateTime @default(now())
+}
+
+// ---------- Fase 4: kundeportal ----------
+/// Engangslenke for innlogging (magisk lenke). Bare hash av tokenet lagres.
+model LoginToken {
+  id          String    @id @default(cuid())
+  tokenHash   String    @unique
+  userId      String
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdById String?   // admin som lagde lenken (null = kunden ba om den selv)
+  createdAt   DateTime  @default(now())
+
+  @@index([userId])
 }

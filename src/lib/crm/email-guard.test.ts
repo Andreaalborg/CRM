@@ -28,6 +28,8 @@ test("ingen andre kodeveier kaller Resend enn de godkjente", () => {
     "src/lib/automations.ts", "src/app/api/cron/process-jobs/route.ts", // kun interne varsler til eier (sjekket over)
     "src/app/api/auth/forgot-password/route.ts", // til brukeren selv
     "src/app/api/invoices/[invoiceId]/send/route.ts", // admin-klikk «Send faktura»
+    "src/lib/portal/actions.ts", // magisk lenke til brukeren selv (som glemt passord)
+    "src/lib/portal/notify.ts", // kun kundens egne brukere med varsel PÅ, sperret til Resend er verifisert
   ]);
   const walk = (d: string): string[] => readdirSync(d).flatMap((n) => { const p = join(d, n); return statSync(p).isDirectory() ? walk(p) : [p]; });
   const hits = walk("src").filter((f) => /\.(ts|tsx)$/.test(f) && !f.endsWith(".test.ts"))

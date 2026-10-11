@@ -1,246 +1,38 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { Card, CardContent, Badge } from "@/components/ui";
-import { Users, Search, Eye, Mail } from "lucide-react";
-import { formatDateTime, formatRelativeTime } from "@/lib/utils";
-import Link from "next/link";
-import { ExportButton } from "@/components/leads";
+import { requireCustomer } from "@/lib/portal/session";
+import { submissionWhere, matchesQuery, type PortalFilter } from "@/lib/portal/core";
+import { SubmissionList } from "@/components/portal/SubmissionList";
 
-interface SubmissionWithForm {
-  id: string;
-  data: unknown;
-  status: string;
-  createdAt: Date;
-  form: {
-    name: string;
-    slug: string;
-  };
-}
+export const dynamic = "force-dynamic";
 
-const statusColors: Record<string, "info" | "warning" | "success" | "error" | "muted"> = {
-  NEW: "info",
-  CONTACTED: "warning",
-  QUALIFIED: "success",
-  CONVERTED: "success",
-  LOST: "error",
-  SPAM: "muted",
-};
-
-const statusLabels: Record<string, string> = {
-  NEW: "Ny",
-  CONTACTED: "Kontaktet",
-  QUALIFIED: "Kvalifisert",
-  CONVERTED: "Konvertert",
-  LOST: "Tapt",
-  SPAM: "Spam",
-};
-
-export default async function CustomerLeadsPage() {
-  const session = await getServerSession(authOptions);
-  
-  if (!session?.user?.organizationId) {
-    return null;
-  }
-
-  const submissions = await db.submission.findMany({
-    where: { organizationId: session.user.organizationId },
-    orderBy: { createdAt: "desc" },
-    include: {
-      form: {
-        select: { name: true, slug: true },
-      },
-    },
-  });
-
+export default async function Henvendelser({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  const c = await requireCustomer();
+  const sp = await searchParams;
+  const f: PortalFilter = { q: sp.q, status: sp.status, formId: sp.form, fra: sp.fra, til: sp.til };
+  const [forms, all] = await Promise.all([
+    db.form.findMany({ where: { organizationId: c.orgId }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    db.submission.findMany({ where: submissionWhere(c.orgId, f), orderBy: { createdAt: "desc" }, take: 500, select: { id: true, createdAt: true, data: true, readAt: true, handledAt: true, form: { select: { name: true } } } }),
+  ]);
+  const rows = all.filter((r) => matchesQuery(r.data, f.q));
+  const qs = new URLSearchParams(Object.entries({ q: sp.q, status: sp.status, form: sp.form, fra: sp.fra, til: sp.til }).filter(([, v]) => v) as [string, string][]).toString();
   return (
-    <div style={{ padding: "32px", maxWidth: "1400px" }}>
-      {/* Header */}
-      <div style={{ 
-        display: "flex", 
-        justifyContent: "space-between", 
-        alignItems: "center",
-        marginBottom: "24px" 
-      }}>
-        <div>
-          <h1 style={{ fontSize: "28px", fontWeight: "700", margin: 0 }}>
-            Mine leads
-          </h1>
-          <p style={{ color: "#6b7280", marginTop: "8px" }}>
-            {submissions.length} leads totalt
-          </p>
-        </div>
-        <ExportButton />
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-2xl font-bold">Henvendelser</h1>
+        <a href={`/customer/leads/export${qs ? `?${qs}` : ""}`} className="crm-btn-ghost text-sm" download>Last ned CSV ({rows.length})</a>
       </div>
-
-      {/* Search bar */}
-      <div style={{ 
-        display: "flex", 
-        gap: "12px", 
-        marginBottom: "24px" 
-      }}>
-        <div style={{ 
-          flex: 1, 
-          position: "relative" 
-        }}>
-          <Search style={{ 
-            position: "absolute", 
-            left: "14px", 
-            top: "50%", 
-            transform: "translateY(-50%)",
-            width: "18px",
-            height: "18px",
-            color: "#9ca3af"
-          }} />
-          <input
-            type="text"
-            placeholder="Søk i leads..."
-            style={{
-              width: "100%",
-              padding: "12px 12px 12px 44px",
-              borderRadius: "10px",
-              border: "1px solid #e2e8f0",
-              fontSize: "14px",
-            }}
-          />
-        </div>
-      </div>
-
-      {submissions.length === 0 ? (
-        <Card style={{ textAlign: "center", padding: "64px 24px" }}>
-          <CardContent>
-            <div style={{
-              width: "64px",
-              height: "64px",
-              borderRadius: "16px",
-              background: "linear-gradient(135deg, #e0e7ff, #c7d2fe)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              margin: "0 auto 24px",
-            }}>
-              <Users style={{ width: "32px", height: "32px", color: "#6366f1" }} />
-            </div>
-            <h3 style={{ fontSize: "20px", fontWeight: "600", margin: "0 0 8px 0" }}>
-              Ingen leads ennå
-            </h3>
-            <p style={{ color: "#6b7280", maxWidth: "400px", margin: "0 auto" }}>
-              Leads vil vises her når noen fyller ut skjemaene dine. 
-              Del skjemaene dine for å begynne å samle leads!
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr style={{ borderBottom: "2px solid #e2e8f0" }}>
-                  <th style={{ textAlign: "left", padding: "16px", fontWeight: "500", color: "#6b7280" }}>
-                    Kontakt
-                  </th>
-                  <th style={{ textAlign: "left", padding: "16px", fontWeight: "500", color: "#6b7280" }}>
-                    Skjema
-                  </th>
-                  <th style={{ textAlign: "left", padding: "16px", fontWeight: "500", color: "#6b7280" }}>
-                    Status
-                  </th>
-                  <th style={{ textAlign: "left", padding: "16px", fontWeight: "500", color: "#6b7280" }}>
-                    Dato
-                  </th>
-                  <th style={{ textAlign: "right", padding: "16px", fontWeight: "500", color: "#6b7280" }}>
-                    Handlinger
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {submissions.map((submission: SubmissionWithForm) => {
-                  const data = submission.data as Record<string, unknown>;
-                  const name = (data.name as string) || (data.navn as string) || "Ukjent";
-                  const email = (data.email as string) || (data.epost as string) || "";
-                  const phone = (data.phone as string) || (data.telefon as string) || "";
-
-                  return (
-                    <tr 
-                      key={submission.id} 
-                      style={{ borderBottom: "1px solid #f1f5f9" }}
-                    >
-                      <td style={{ padding: "16px" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                          <div style={{
-                            width: "40px",
-                            height: "40px",
-                            borderRadius: "50%",
-                            background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            color: "white",
-                            fontWeight: "600",
-                          }}>
-                            {name.charAt(0).toUpperCase()}
-                          </div>
-                          <div>
-                            <p style={{ fontWeight: "500", margin: 0 }}>{name}</p>
-                            <p style={{ fontSize: "12px", color: "#6b7280", margin: "2px 0 0 0" }}>
-                              {email || phone || "Ingen kontaktinfo"}
-                            </p>
-                          </div>
-                        </div>
-                      </td>
-                      <td style={{ padding: "16px" }}>
-                        <Badge variant="outline">{submission.form.name}</Badge>
-                      </td>
-                      <td style={{ padding: "16px" }}>
-                        <Badge variant={statusColors[submission.status]}>
-                          {statusLabels[submission.status]}
-                        </Badge>
-                      </td>
-                      <td style={{ padding: "16px" }}>
-                        <div>
-                          <p style={{ fontSize: "14px", margin: 0 }}>{formatDateTime(submission.createdAt)}</p>
-                          <p style={{ fontSize: "12px", color: "#6b7280", margin: "2px 0 0 0" }}>
-                            {formatRelativeTime(submission.createdAt)}
-                          </p>
-                        </div>
-                      </td>
-                      <td style={{ padding: "16px" }}>
-                        <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
-                          <Link href={`/customer/leads/${submission.id}`}>
-                            <button style={{
-                              padding: "8px",
-                              borderRadius: "6px",
-                              border: "none",
-                              background: "#f1f5f9",
-                              cursor: "pointer",
-                            }}>
-                              <Eye style={{ width: "16px", height: "16px", color: "#6b7280" }} />
-                            </button>
-                          </Link>
-                          {email && (
-                            <a href={`mailto:${email}`}>
-                              <button style={{
-                                padding: "8px",
-                                borderRadius: "6px",
-                                border: "none",
-                                background: "#f1f5f9",
-                                cursor: "pointer",
-                              }}>
-                                <Mail style={{ width: "16px", height: "16px", color: "#6b7280" }} />
-                              </button>
-                            </a>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
+      <form method="get" className="crm-card grid grid-cols-2 gap-3 p-4 sm:grid-cols-5" aria-label="Filter">
+        <div className="col-span-2"><label className="crm-label" htmlFor="q">Søk</label><input id="q" name="q" defaultValue={sp.q} className="crm-input" placeholder="Navn, e-post, tekst …" /></div>
+        <div><label className="crm-label" htmlFor="status">Status</label>
+          <select id="status" name="status" defaultValue={sp.status ?? ""} className="crm-input"><option value="">Alle</option><option value="ny">Ny</option><option value="handtert">Håndtert</option></select></div>
+        <div><label className="crm-label" htmlFor="form">Skjema</label>
+          <select id="form" name="form" defaultValue={sp.form ?? ""} className="crm-input"><option value="">Alle</option>{forms.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></div>
+        <div><label className="crm-label" htmlFor="fra">Fra dato</label><input id="fra" name="fra" type="date" defaultValue={sp.fra} className="crm-input" /></div>
+        <div className="col-span-2 sm:col-span-1 sm:col-start-5"><label className="crm-label" htmlFor="til">Til dato</label><input id="til" name="til" type="date" defaultValue={sp.til} className="crm-input" /></div>
+        <div className="col-span-2 flex gap-2 sm:col-span-5"><button className="crm-btn">Filtrer</button><a href="/customer/leads" className="crm-btn-ghost">Nullstill</a></div>
+      </form>
+      <p className="text-sm text-[var(--color-brand-muted)]" aria-live="polite">{rows.length} treff</p>
+      <SubmissionList rows={rows} />
     </div>
   );
 }
-

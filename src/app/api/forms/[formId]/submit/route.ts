@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { headers } from "next/headers";
 import { runAutomationsForSubmission } from "@/lib/automations";
+import { notifyNewSubmission } from "@/lib/portal/notify";
 import { rateLimit } from "@/lib/rate-limit";
 
 const HONEYPOT_FIELD = "_hp_website";
@@ -135,6 +136,10 @@ export async function POST(
     }).catch((error) => {
       console.error("Error running automations:", error);
     });
+
+    // Fase 4: varsel kun til kundens egne brukere som har slått det på (sperret til Resend er verifisert)
+    await notifyNewSubmission({ id: submission.id, organizationId: form.organizationId, formName: form.name, data: body })
+      .catch((e) => console.error("Varsel feilet:", e));
 
     return NextResponse.json({
       success: true,

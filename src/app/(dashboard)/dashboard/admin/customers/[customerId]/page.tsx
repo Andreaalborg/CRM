@@ -12,6 +12,7 @@ import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
 import { formatDateTime, formatRelativeTime } from "@/lib/utils";
 import { CustomerSettings } from "@/components/admin/customer-settings";
+import { LoginLinkButton } from "@/components/portal/LoginLinkButton";
 
 interface Props {
   params: Promise<{ customerId: string }>;
@@ -305,9 +306,7 @@ export default async function CustomerDetailPage({ params }: Props) {
                         <Badge variant={user.role === "SUPER_ADMIN" ? "info" : "outline"}>
                           {user.role === "SUPER_ADMIN" ? "Admin" : "Bruker"}
                         </Badge>
-                        <Button variant="ghost" size="icon-sm">
-                          <Edit style={{ width: "14px", height: "14px" }} />
-                        </Button>
+                        {user.role === "CUSTOMER" && <LoginLinkButton userId={user.id} email={user.email} />}
                       </div>
                     </div>
                   ))}

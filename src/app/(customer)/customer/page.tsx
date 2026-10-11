@@ -1,228 +1,43 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui";
-import { Users, FileText, TrendingUp, Clock } from "lucide-react";
 import Link from "next/link";
-import { formatRelativeTime } from "@/lib/utils";
+import { db } from "@/lib/db";
+import { requireCustomer } from "@/lib/portal/session";
+import { submissionWhere } from "@/lib/portal/core";
+import { SubmissionList } from "@/components/portal/SubmissionList";
 
-interface LeadWithForm {
-  id: string;
-  data: unknown;
-  status: string;
-  createdAt: Date;
-  form: { name: string };
-}
+export const dynamic = "force-dynamic";
 
-export default async function CustomerDashboard() {
-  const session = await getServerSession(authOptions);
-  
-  if (!session?.user?.organizationId) {
-    return null;
-  }
-
-  const orgId = session.user.organizationId;
-
-  // Hent statistikk
-  const [totalLeads, totalForms, recentLeads, conversionRate] = await Promise.all([
-    db.submission.count({ where: { organizationId: orgId } }),
-    db.form.count({ where: { organizationId: orgId, status: "PUBLISHED" } }),
-    db.submission.findMany({
-      where: { organizationId: orgId },
-      orderBy: { createdAt: "desc" },
-      take: 5,
-      include: { form: { select: { name: true } } },
-    }),
-    db.submission.count({
-      where: { organizationId: orgId, status: "CONVERTED" },
-    }),
+export default async function Oversikt() {
+  const c = await requireCustomer();
+  const since = new Date(Date.now() - 29 * 86400_000); since.setHours(0, 0, 0, 0);
+  const [nye, uleste, siste, last30] = await Promise.all([
+    db.submission.count({ where: submissionWhere(c.orgId, { status: "ny" }) }),
+    db.submission.count({ where: { ...submissionWhere(c.orgId), readAt: null } }),
+    db.submission.findMany({ where: submissionWhere(c.orgId), orderBy: { createdAt: "desc" }, take: 5, select: { id: true, createdAt: true, data: true, readAt: true, handledAt: true, form: { select: { name: true } } } }),
+    db.submission.findMany({ where: { ...submissionWhere(c.orgId), createdAt: { gte: since } }, select: { createdAt: true } }),
   ]);
-
-  const conversionPercent = totalLeads > 0 
-    ? Math.round((conversionRate / totalLeads) * 100) 
-    : 0;
-
+  const key = (d: Date) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Oslo" }).format(d);
+  const days = Array.from({ length: 30 }, (_, i) => key(new Date(since.getTime() + i * 86400_000)));
+  const counts = days.map((d) => last30.filter((s) => key(s.createdAt) === d).length);
+  const max = Math.max(1, ...counts);
   return (
-    <div style={{ padding: "32px", maxWidth: "1200px" }}>
-      {/* Header */}
-      <div style={{ marginBottom: "32px" }}>
-        <h1 style={{ fontSize: "28px", fontWeight: "700", margin: 0 }}>
-          Velkommen tilbake! 👋
-        </h1>
-        <p style={{ color: "#6b7280", marginTop: "8px" }}>
-          Her er en oversikt over dine leads og skjemaer.
-        </p>
-      </div>
-
-      {/* Stats */}
-      <div style={{ 
-        display: "grid", 
-        gridTemplateColumns: "repeat(4, 1fr)", 
-        gap: "20px",
-        marginBottom: "32px"
-      }}>
-        <Card>
-          <CardContent style={{ padding: "24px" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div>
-                <p style={{ color: "#6b7280", fontSize: "14px", margin: 0 }}>Totale leads</p>
-                <p style={{ fontSize: "32px", fontWeight: "700", margin: "8px 0 0 0" }}>{totalLeads}</p>
-              </div>
-              <div style={{
-                width: "48px",
-                height: "48px",
-                borderRadius: "12px",
-                background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}>
-                <Users style={{ width: "24px", height: "24px", color: "white" }} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent style={{ padding: "24px" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div>
-                <p style={{ color: "#6b7280", fontSize: "14px", margin: 0 }}>Aktive skjemaer</p>
-                <p style={{ fontSize: "32px", fontWeight: "700", margin: "8px 0 0 0" }}>{totalForms}</p>
-              </div>
-              <div style={{
-                width: "48px",
-                height: "48px",
-                borderRadius: "12px",
-                background: "linear-gradient(135deg, #10b981, #059669)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}>
-                <FileText style={{ width: "24px", height: "24px", color: "white" }} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent style={{ padding: "24px" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div>
-                <p style={{ color: "#6b7280", fontSize: "14px", margin: 0 }}>Konverteringsrate</p>
-                <p style={{ fontSize: "32px", fontWeight: "700", margin: "8px 0 0 0" }}>{conversionPercent}%</p>
-              </div>
-              <div style={{
-                width: "48px",
-                height: "48px",
-                borderRadius: "12px",
-                background: "linear-gradient(135deg, #f59e0b, #d97706)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}>
-                <TrendingUp style={{ width: "24px", height: "24px", color: "white" }} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent style={{ padding: "24px" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div>
-                <p style={{ color: "#6b7280", fontSize: "14px", margin: 0 }}>Konverterte</p>
-                <p style={{ fontSize: "32px", fontWeight: "700", margin: "8px 0 0 0" }}>{conversionRate}</p>
-              </div>
-              <div style={{
-                width: "48px",
-                height: "48px",
-                borderRadius: "12px",
-                background: "linear-gradient(135deg, #06b6d4, #0891b2)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}>
-                <Clock style={{ width: "24px", height: "24px", color: "white" }} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Recent leads */}
-      <Card>
-        <CardHeader>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <CardTitle>Siste leads</CardTitle>
-            <Link href="/customer/leads" style={{ 
-              color: "#6366f1", 
-              fontSize: "14px", 
-              textDecoration: "none" 
-            }}>
-              Se alle →
-            </Link>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {recentLeads.length === 0 ? (
-            <p style={{ color: "#6b7280", textAlign: "center", padding: "32px 0" }}>
-              Ingen leads ennå. Del skjemaene dine for å begynne å samle leads!
-            </p>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              {recentLeads.map((lead: LeadWithForm) => {
-                const data = lead.data as Record<string, unknown>;
-                const name = (data.name as string) || (data.navn as string) || "Ukjent";
-                const email = (data.email as string) || (data.epost as string) || "";
-
-                return (
-                  <Link
-                    key={lead.id}
-                    href={`/customer/leads/${lead.id}`}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      padding: "16px",
-                      background: "#f8fafc",
-                      borderRadius: "12px",
-                      textDecoration: "none",
-                      color: "inherit",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                      <div style={{
-                        width: "40px",
-                        height: "40px",
-                        borderRadius: "50%",
-                        background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        color: "white",
-                        fontWeight: "600",
-                      }}>
-                        {name.charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <p style={{ fontWeight: "500", margin: 0 }}>{name}</p>
-                        <p style={{ fontSize: "12px", color: "#6b7280", margin: "2px 0 0 0" }}>
-                          {email || lead.form.name}
-                        </p>
-                      </div>
-                    </div>
-                    <span style={{ fontSize: "12px", color: "#6b7280" }}>
-                      {formatRelativeTime(lead.createdAt)}
-                    </span>
-                  </Link>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold">Oversikt</h1>
+      <section aria-label="Nøkkeltall" className="grid grid-cols-3 gap-3">
+        {[["Nye (ikke håndtert)", nye], ["Uleste", uleste], ["Siste 30 dager", last30.length]].map(([l, v]) => (
+          <div key={String(l)} className="crm-card p-3 sm:p-4"><p className="text-xs text-[var(--color-brand-muted)] sm:text-sm">{l}</p><p className="mt-1 text-2xl font-bold">{v}</p></div>
+        ))}
+      </section>
+      <section className="crm-card p-4" aria-labelledby="graf">
+        <h2 id="graf" className="mb-3 font-semibold">Henvendelser siste 30 dager</h2>
+        <div className="flex h-28 items-end gap-[2px]" role="img" aria-label={`Søylediagram: ${last30.length} henvendelser siste 30 dager, flest på én dag: ${Math.max(...counts)}`}>
+          {counts.map((n, i) => <div key={days[i]} title={`${days[i]}: ${n}`} className="flex-1 rounded-t bg-[var(--color-brand)]" style={{ height: `${(n / max) * 100}%`, minHeight: n ? 4 : 1, opacity: n ? 1 : 0.25 }} />)}
+        </div>
+        <div className="mt-1 flex justify-between text-xs text-[var(--color-brand-muted)]"><span>{days[0]}</span><span>I dag</span></div>
+      </section>
+      <section aria-labelledby="siste">
+        <div className="mb-2 flex items-center justify-between"><h2 id="siste" className="font-semibold">De 5 siste</h2><Link href="/customer/leads" className="text-sm font-medium text-[var(--color-brand)] underline">Se alle</Link></div>
+        <SubmissionList rows={siste} />
+      </section>
     </div>
   );
 }
-

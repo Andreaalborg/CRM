@@ -1,155 +1,25 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { redirect } from "next/navigation";
-import { SessionProvider } from "@/components/providers/session-provider";
 import Link from "next/link";
-import { LayoutDashboard, Users, FileText, LogOut, Settings } from "lucide-react";
+import { requireCustomer } from "@/lib/portal/session";
+import { PortalNav } from "@/components/portal/PortalNav";
 
-export default async function CustomerLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const session = await getServerSession(authOptions);
-
-  if (!session) {
-    redirect("/login");
-  }
-
+// Fase 4: kundeportal (mobil først). Bare kundebrukere; data avgrenses alltid til egen organisasjon.
+export default async function CustomerLayout({ children }: { children: React.ReactNode }) {
+  const c = await requireCustomer();
   return (
-    <SessionProvider>
-      <div style={{ 
-        minHeight: "100vh", 
-        background: "#f8fafc",
-        display: "flex"
-      }}>
-        {/* Sidebar */}
-        <aside style={{
-          width: "260px",
-          background: "white",
-          borderRight: "1px solid #e2e8f0",
-          display: "flex",
-          flexDirection: "column",
-          position: "fixed",
-          height: "100vh",
-        }}>
-          {/* Logo */}
-          <div style={{ 
-            padding: "24px", 
-            borderBottom: "1px solid #e2e8f0" 
-          }}>
-            <h1 style={{ 
-              fontSize: "20px", 
-              fontWeight: "700", 
-              background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              margin: 0
-            }}>
-              Kundeportal
-            </h1>
-            <p style={{ 
-              fontSize: "12px", 
-              color: "#6b7280", 
-              margin: "4px 0 0 0" 
-            }}>
-              {session.user?.name || session.user?.email}
-            </p>
-          </div>
-
-          {/* Navigation */}
-          <nav style={{ padding: "16px", flex: 1 }}>
-            <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-              <li>
-                <Link href="/customer" style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "12px",
-                  padding: "12px 16px",
-                  borderRadius: "8px",
-                  color: "#374151",
-                  textDecoration: "none",
-                  marginBottom: "4px",
-                }}>
-                  <LayoutDashboard style={{ width: "20px", height: "20px" }} />
-                  Oversikt
-                </Link>
-              </li>
-              <li>
-                <Link href="/customer/leads" style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "12px",
-                  padding: "12px 16px",
-                  borderRadius: "8px",
-                  color: "#374151",
-                  textDecoration: "none",
-                  marginBottom: "4px",
-                }}>
-                  <Users style={{ width: "20px", height: "20px" }} />
-                  Mine leads
-                </Link>
-              </li>
-              <li>
-                <Link href="/customer/forms" style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "12px",
-                  padding: "12px 16px",
-                  borderRadius: "8px",
-                  color: "#374151",
-                  textDecoration: "none",
-                  marginBottom: "4px",
-                }}>
-                  <FileText style={{ width: "20px", height: "20px" }} />
-                  Skjemaer
-                </Link>
-              </li>
-              <li>
-                <Link href="/customer/settings" style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "12px",
-                  padding: "12px 16px",
-                  borderRadius: "8px",
-                  color: "#374151",
-                  textDecoration: "none",
-                  marginBottom: "4px",
-                }}>
-                  <Settings style={{ width: "20px", height: "20px" }} />
-                  Innstillinger
-                </Link>
-              </li>
-            </ul>
-          </nav>
-
-          {/* Footer */}
-          <div style={{ padding: "16px", borderTop: "1px solid #e2e8f0" }}>
-            <Link href="/api/auth/signout" style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "12px",
-              padding: "12px 16px",
-              borderRadius: "8px",
-              color: "#ef4444",
-              textDecoration: "none",
-            }}>
-              <LogOut style={{ width: "20px", height: "20px" }} />
-              Logg ut
-            </Link>
-          </div>
-        </aside>
-
-        {/* Main content */}
-        <main style={{ 
-          marginLeft: "260px", 
-          flex: 1,
-          minHeight: "100vh"
-        }}>
-          {children}
-        </main>
-      </div>
-    </SessionProvider>
+    <div className="min-h-screen bg-[var(--color-brand-bg)] text-[var(--color-brand-ink)]">
+      <a href="#innhold" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-white focus:px-3 focus:py-2">Hopp til innhold</a>
+      <header className="sticky top-0 z-40 border-b border-[var(--color-brand-border)] bg-white/95 backdrop-blur">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
+          <Link href="/customer" className="min-w-0 crm-focus rounded">
+            <span className="block text-xs font-semibold uppercase tracking-wide text-[var(--color-brand)]">Kundeportal</span>
+            <span className="block truncate font-semibold">{c.orgName}</span>
+          </Link>
+          <a href="/api/auth/signout?callbackUrl=/customer/login" className="crm-btn-ghost text-sm">Logg ut</a>
+        </div>
+        <PortalNav />
+      </header>
+      <main id="innhold" className="mx-auto max-w-5xl px-4 py-5 sm:py-8">{children}</main>
+      <footer className="mx-auto max-w-5xl px-4 pb-8 text-xs text-[var(--color-brand-muted)]">Levert av IntelliSense · <a className="underline" href="https://intellisenseai.no/personvern">Personvern</a></footer>
+    </div>
   );
 }
-
