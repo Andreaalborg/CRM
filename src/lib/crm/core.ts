@@ -1,6 +1,7 @@
 // Ren forretningslogikk for salgs-CRM-et (ingen DB/Next-avhengigheter, testes i core.test.ts).
 
 export const STAGES = [
+  "INNKOMMENDE",
   "KVALIFISERT",
   "GODKJENT",
   "KONTAKTET",
@@ -14,6 +15,7 @@ export const STAGES = [
 export type Stage = (typeof STAGES)[number];
 
 export const STAGE_LABEL: Record<Stage, string> = {
+  INNKOMMENDE: "Innkommende",
   KVALIFISERT: "Kvalifisert",
   GODKJENT: "Godkjent for kontakt",
   KONTAKTET: "Kontaktet",
@@ -27,6 +29,7 @@ export const STAGE_LABEL: Record<Stage, string> = {
 
 /** Standard sannsynlighet per steg (brukes når sannsynlighetKilde = stage-default). */
 export const STAGE_DEFAULT_PROB: Record<Stage, number> = {
+  INNKOMMENDE: 15,
   KVALIFISERT: 10,
   GODKJENT: 15,
   KONTAKTET: 20,
@@ -38,7 +41,7 @@ export const STAGE_DEFAULT_PROB: Record<Stage, number> = {
   PAUSE: 5,
 };
 
-export const OPEN_STAGES: Stage[] = ["KVALIFISERT", "GODKJENT", "KONTAKTET", "SVART", "MOTE", "TILBUD"];
+export const OPEN_STAGES: Stage[] = ["INNKOMMENDE", "KVALIFISERT", "GODKJENT", "KONTAKTET", "SVART", "MOTE", "TILBUD"];
 
 export function isStage(v: unknown): v is Stage {
   return typeof v === "string" && (STAGES as readonly string[]).includes(v);
@@ -137,4 +140,19 @@ export function nextPosition(positions: number[]): number {
 export function formatNok(n: number | null | undefined): string {
   if (n == null) return "–";
   return new Intl.NumberFormat("nb-NO", { style: "currency", currency: "NOK", maximumFractionDigits: 0 }).format(n);
+}
+
+/** Steg en bot (API-nøkkel) får sette. Alt fra «Godkjent for kontakt» og senere krever André. */
+export const BOT_STAGES: Stage[] = ["INNKOMMENDE", "KVALIFISERT"];
+
+/** Kan en bot flytte en deal fra `from` til `to`? Boten kan aldri røre en deal som André har godkjent/flyttet videre. */
+export function botMayMoveTo(from: Stage | null, to: Stage): boolean {
+  if (!BOT_STAGES.includes(to)) return false;
+  return from === null || BOT_STAGES.includes(from);
+}
+
+/** Generisk firma-adresse (post@, firmapost@, kontakt@, service@ m.fl.) – ikke personlig. */
+export function isGenericEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return /^(post|firmapost|kontakt|service|info|mail|epost|hei|salg|kundeservice|resepsjon|booking|bestilling)@/i.test(email.trim());
 }

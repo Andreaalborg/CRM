@@ -8,6 +8,7 @@ const tabs = [
   { href: "/dashboard/crm/pipeline", label: "Pipeline" },
   { href: "/dashboard/crm/firma", label: "Firma" },
   { href: "/dashboard/crm/oppgaver", label: "Oppgaver" },
+  { href: "/dashboard/crm/innstillinger", label: "Innstillinger" },
 ];
 
 export function CrmNav() {

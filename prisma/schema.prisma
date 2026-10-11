@@ -800,6 +800,7 @@ model RecurringInvoiceLog {
 // ============================================
 
 enum DealStage {
+  INNKOMMENDE   // Innkommende henvendelse (nettside/chat), fase 2
   KVALIFISERT
   GODKJENT      // Godkjent for kontakt (André)
   KONTAKTET
@@ -959,4 +960,28 @@ model CompanyTag {
 
   @@id([companyId, tagId])
   @@index([tagId])
+}
+
+// ============================================
+// BOT-API OG INNKOMMENDE LEADS (fase 2)
+// ============================================
+
+model BotApiKey {
+  id          String    @id @default(cuid())
+  navn        String    @unique
+  prefix      String    // første tegn av nøkkelen, for gjenkjenning i UI
+  hash        String    @unique // sha256 av nøkkelen; selve nøkkelen lagres aldri
+  scopes      String[]
+  createdById String?
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+model ApiRateBucket {
+  key         String
+  windowStart DateTime
+  count       Int      @default(0)
+
+  @@id([key, windowStart])
 }

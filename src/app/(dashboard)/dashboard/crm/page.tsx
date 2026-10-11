@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { OPEN_STAGES, osloDayBounds, dueState, expectedValue, formatNok, type Stage } from "@/lib/crm/core";
 import { PageHeader } from "@/components/crm/PageHeader";
 import { StatusBadge, DueBadge } from "@/components/crm/StatusBadge";
-import { NextStepDoneButton, TaskButtons } from "@/components/crm/ActionButtons";
+import { NextStepDoneButton, TaskButtons, ApproveButton } from "@/components/crm/ActionButtons";
 import { formatDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +15,7 @@ export default async function IDagPage() {
   const weekAgo = new Date(now.getTime() - 7 * 86400_000);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-  const [dueDeals, dueTasks, newLeads, openDeals, wonMonth] = await Promise.all([
+  const [dueDeals, dueTasks, newLeads, openDeals, wonMonth, toApprove] = await Promise.all([
     db.deal.findMany({
       where: { nesteStegDato: { lt: end }, stage: { in: [...OPEN_STAGES, "PAUSE"] } },
       orderBy: { nesteStegDato: "asc" },
@@ -27,13 +27,19 @@ export default async function IDagPage() {
       include: { company: { select: { id: true, navn: true } } },
     }),
     db.deal.findMany({
-      where: { createdAt: { gte: weekAgo }, stage: "KVALIFISERT" },
+      where: { createdAt: { gte: weekAgo }, stage: { in: ["INNKOMMENDE", "KVALIFISERT"] } },
       orderBy: { createdAt: "desc" },
       take: 10,
       include: { company: { select: { id: true, navn: true } } },
     }),
     db.deal.findMany({ where: { stage: { in: OPEN_STAGES } }, select: { stage: true, verdi: true, sannsynlighet: true } }),
     db.deal.count({ where: { stage: "VUNNET", signertDato: { gte: monthStart } } }),
+    db.deal.findMany({
+      where: { stage: "KVALIFISERT" },
+      orderBy: [{ sannsynlighet: "desc" }, { createdAt: "asc" }],
+      take: 20,
+      include: { company: { select: { id: true, navn: true, generiskEpost: true, rodtFlagg: true } } },
+    }),
   ]);
 
   const inDialog = openDeals.filter((d) => ["KONTAKTET", "SVART", "MOTE"].includes(d.stage)).length;
@@ -65,6 +71,24 @@ export default async function IDagPage() {
           </div>
         ))}
       </section>
+
+      {toApprove.length > 0 && (
+        <section className="crm-card mb-6 p-4 sm:p-6" aria-labelledby="godkj">
+          <h2 id="godkj" className="mb-1 font-semibold">Til godkjenning ({toApprove.length})</h2>
+          <p className="mb-4 text-sm text-brand-muted">Kvalifiserte leads (fra lead-appen og boter). Ett klikk godkjenner for kontakt. Ingenting sendes automatisk.</p>
+          <ul className="divide-y divide-brand-border">
+            {toApprove.map((d) => (
+              <li key={d.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div className="min-w-0">
+                  <Link href={`/dashboard/crm/firma/${d.company.id}`} className="font-semibold text-brand hover:underline">{d.company.navn}</Link>
+                  <p className="text-sm text-brand-muted break-words">{d.sannsynlighet} % · {formatNok(d.verdi)}{d.company.generiskEpost ? ` · ${d.company.generiskEpost}` : ""}{d.company.rodtFlagg ? ` · ⚑ ${d.company.rodtFlagg}` : ""}</p>
+                </div>
+                <ApproveButton dealId={d.id} navn={d.company.navn} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="crm-card p-4 sm:p-6" aria-labelledby="oppf">

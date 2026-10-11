@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { STAGE_LABEL, type Stage } from "@/lib/crm/core";
 
 export const STAGE_STYLE: Record<Stage, string> = {
+  INNKOMMENDE: "bg-pink-50 text-pink-800 ring-pink-600/20",
   KVALIFISERT: "bg-slate-100 text-slate-700 ring-slate-500/20",
   GODKJENT: "bg-brand-tint text-brand ring-brand/20",
   KONTAKTET: "bg-blue-50 text-blue-800 ring-blue-600/20",

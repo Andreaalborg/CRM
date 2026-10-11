@@ -2,16 +2,17 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   STAGES, adjacentStage, validateStageChange, probabilityAfterMove, expectedValue,
-  normalizeOrgnr, isValidOrgnr, dueState, osloDayBounds, nextPosition, isStage,
+  normalizeOrgnr, isValidOrgnr, botMayMoveTo, isGenericEmail, dueState, osloDayBounds, nextPosition, isStage,
 } from "./core";
 
 test("pipeline har stegene André godkjente, i rekkefølge", () => {
-  assert.deepEqual([...STAGES], ["KVALIFISERT","GODKJENT","KONTAKTET","SVART","MOTE","TILBUD","VUNNET","TAPT","PAUSE"]);
+  assert.deepEqual([...STAGES], ["INNKOMMENDE","KVALIFISERT","GODKJENT","KONTAKTET","SVART","MOTE","TILBUD","VUNNET","TAPT","PAUSE"]);
 });
 
 test("tastaturflytt: forrige/neste og kanter", () => {
   assert.equal(adjacentStage("KVALIFISERT", 1), "GODKJENT");
-  assert.equal(adjacentStage("KVALIFISERT", -1), null);
+  assert.equal(adjacentStage("KVALIFISERT", -1), "INNKOMMENDE");
+  assert.equal(adjacentStage("INNKOMMENDE", -1), null);
   assert.equal(adjacentStage("PAUSE", 1), null);
   assert.equal(adjacentStage("TILBUD", 1), "VUNNET");
 });
@@ -64,4 +65,19 @@ test("posisjon og typevakt", () => {
   assert.equal(nextPosition([0, 4, 2]), 5);
   assert.equal(isStage("MOTE"), true);
   assert.equal(isStage("NY"), false);
+});
+
+test("bot kan ikke sette Godkjent eller senere, og ikke røre godkjente deals", () => {
+  assert.equal(botMayMoveTo(null, "KVALIFISERT"), true);
+  assert.equal(botMayMoveTo("INNKOMMENDE", "KVALIFISERT"), true);
+  for (const s of ["GODKJENT","KONTAKTET","SVART","MOTE","TILBUD","VUNNET","TAPT","PAUSE"] as const) assert.equal(botMayMoveTo("KVALIFISERT", s), false, s);
+  assert.equal(botMayMoveTo("GODKJENT", "KVALIFISERT"), false);
+  assert.equal(botMayMoveTo("TAPT", "INNKOMMENDE"), false);
+});
+
+test("generisk e-post", () => {
+  assert.equal(isGenericEmail("post@firma.no"), true);
+  assert.equal(isGenericEmail("Kontakt@firma.no"), true);
+  assert.equal(isGenericEmail("ola.nordmann@firma.no"), false);
+  assert.equal(isGenericEmail(null), false);
 });

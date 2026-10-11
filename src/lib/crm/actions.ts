@@ -330,3 +330,28 @@ export async function completeNextStep(dealId: string): Promise<ActionResult> {
   revalidateCrm(d.companyId);
   return { ok: true, id: dealId };
 }
+
+// ---------- Bot-API-nøkler (fase 2) ----------
+
+export async function createApiKey(_: unknown, f: FormData): Promise<{ ok: true; key: string; navn: string } | { ok: false; error: string }> {
+  const user = await requireAdmin();
+  const { generateApiKey, hashApiKey, SCOPES } = await import("./apikey");
+  const navn = str(f, "navn");
+  if (!navn || !/^[a-z0-9][a-z0-9 _.-]{1,48}$/i.test(navn)) return { ok: false, error: "Navn: 2–50 tegn (bokstaver, tall, mellomrom, - _ .)" };
+  const scopes = SCOPES.filter((s) => f.get(`scope:${s}`) === "on");
+  if (!scopes.length) return { ok: false, error: "Velg minst én rettighet" };
+  if (await db.botApiKey.findUnique({ where: { navn } })) return { ok: false, error: "Det finnes allerede en nøkkel med dette navnet" };
+  const key = generateApiKey();
+  const k = await db.botApiKey.create({ data: { navn, scopes, prefix: key.slice(0, 10), hash: hashApiKey(key), createdById: user.id } });
+  await audit(db, user.id, "created", "apikey", k.id, { navn, scopes });
+  revalidatePath("/dashboard/crm/innstillinger");
+  return { ok: true, key, navn };
+}
+
+export async function revokeApiKey(id: string): Promise<ActionResult> {
+  const user = await requireAdmin();
+  await db.botApiKey.update({ where: { id }, data: { revokedAt: new Date() } });
+  await audit(db, user.id, "revoked", "apikey", id);
+  revalidatePath("/dashboard/crm/innstillinger");
+  return { ok: true, id };
+}
