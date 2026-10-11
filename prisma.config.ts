@@ -9,6 +9,7 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // Migreringer går mot Neons direkte (unpooled) URL
+    url: process.env["NEON_DATABASE_URL_UNPOOLED"] || process.env["DATABASE_URL"],
   },
 });
