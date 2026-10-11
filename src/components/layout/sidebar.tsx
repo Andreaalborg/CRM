@@ -19,6 +19,7 @@ import {
   Shield,
   Receipt,
   CalendarDays,
+  Briefcase,
 } from "lucide-react";
 import { cn, getInitials } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage, Button } from "@/components/ui";
@@ -63,6 +64,11 @@ const navigation = [
 
 const adminNavigation = [
   {
+    name: "Salgs-CRM",
+    href: "/dashboard/crm",
+    icon: Briefcase,
+  },
+  {
     name: "Agency Admin",
     href: "/dashboard/admin",
     icon: Shield,
@@ -99,7 +105,7 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "flex flex-col h-screen bg-white border-r border-slate-200 transition-all duration-300 relative",
+        "hidden md:flex flex-col h-screen bg-white border-r border-slate-200 transition-all duration-300 relative",
         collapsed ? "w-[72px]" : "w-64"
       )}
     >
@@ -133,7 +139,7 @@ export function Sidebar() {
       {/* Main Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         {navigation.map((item) => {
-          const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(`${item.href}/`));
           return (
             <Link
               key={item.name}

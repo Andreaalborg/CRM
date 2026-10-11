@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 
 // Admin-only områder (data på tvers av organisasjoner)
-const ADMIN_PAGES = ["/dashboard/admin", "/dashboard/invoices", "/dashboard/oversikt"];
+const ADMIN_PAGES = ["/dashboard/admin", "/dashboard/invoices", "/dashboard/oversikt", "/dashboard/crm"];
 const ADMIN_APIS = ["/api/admin", "/api/invoices", "/api/recurring-invoices", "/api/calendar"];
 
 const startsWithAny = (path: string, list: string[]) =>

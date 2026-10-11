@@ -558,6 +558,7 @@ model Tag {
   createdAt      DateTime @default(now())
   
   submissions    SubmissionTag[]
+  companies      CompanyTag[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -792,4 +793,170 @@ model RecurringInvoiceLog {
   recurringInvoice    RecurringInvoice @relation(fields: [recurringInvoiceId], references: [id], onDelete: Cascade)
 
   @@index([recurringInvoiceId])
+}
+
+// ============================================
+// SALGS-CRM (fase 1) – kun SUPER_ADMIN
+// ============================================
+
+enum DealStage {
+  KVALIFISERT
+  GODKJENT      // Godkjent for kontakt (André)
+  KONTAKTET
+  SVART
+  MOTE          // Møte/demo
+  TILBUD        // Tilbud sendt
+  VUNNET
+  TAPT
+  PAUSE
+}
+
+enum DealKilde {
+  LEAD_APP
+  NETTSIDE
+  HENVISNING
+  ANNET
+}
+
+enum Pakke {
+  STARTER
+  VEKST
+  PREMIUM
+  EGENDEFINERT
+}
+
+enum CrmActivityType {
+  NOTAT
+  EPOST
+  TELEFON
+  MOTE
+  STEG
+  SYSTEM
+}
+
+model Company {
+  id            String   @id @default(cuid())
+  orgnr         String?  @unique // 9 siffer, normalisert. Unik = ingen duplikater
+  navn          String
+  orgform       String?
+  bransje       String?
+  naceKode      String?
+  kommune       String?
+  nettside      String?
+  generiskEpost String?
+  telefon       String?
+  ansatte       Int?
+  rodtFlagg     String?
+  svakheter     String?  // én per linje (målinger og dato)
+  salgsvinkel   String?
+  demoUrl       String?
+  notater       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  contacts   Contact[]
+  deals      Deal[]
+  activities CrmActivity[]
+  tasks      CrmTask[]
+  tags       CompanyTag[]
+
+  @@index([navn])
+}
+
+model Contact {
+  id        String   @id @default(cuid())
+  companyId String
+  navn      String
+  rolle     String?
+  epost     String?
+  telefon   String?
+  notater   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+}
+
+model Deal {
+  id                 String    @id @default(cuid())
+  companyId          String
+  tittel             String
+  stage              DealStage @default(KVALIFISERT)
+  position           Int       @default(0)
+  sannsynlighet      Int       @default(10) // 0–100
+  sannsynlighetKilde String    @default("stage-default") // leadhunter | manuell | stage-default
+  verdi              Int?      // NOK eks. mva (forventet kundeverdi, kv24)
+  oppstartTotal      Int?
+  maanedspris        Int?
+  pakke              Pakke?
+  kilde              DealKilde @default(ANNET)
+  eierId             String?
+  nesteSteg          String?
+  nesteStegDato      DateTime?
+  sistKontakt        DateTime?
+  forventetLukkedato DateTime?
+  tilbudSendtDato    DateTime?
+  signertDato        DateTime?
+  tapsarsak          String?
+  innvendinger       String?
+  godkjentAvId       String?
+  godkjentDato       DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  company    Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  activities CrmActivity[]
+  tasks      CrmTask[]
+
+  @@index([companyId])
+  @@index([stage, position])
+  @@index([nesteStegDato])
+}
+
+model CrmActivity {
+  id        String          @id @default(cuid())
+  companyId String
+  dealId    String?
+  type      CrmActivityType @default(NOTAT)
+  tekst     String
+  userId    String?
+  kilde     String?         // f.eks. "manuell", bot-navn
+  createdAt DateTime        @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  deal    Deal?   @relation(fields: [dealId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, createdAt])
+  @@index([dealId])
+}
+
+model CrmTask {
+  id        String    @id @default(cuid())
+  tittel    String
+  forfall   DateTime
+  ferdig    DateTime?
+  companyId String?
+  dealId    String?
+  userId    String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  company Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  deal    Deal?    @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([forfall, ferdig])
+}
+
+model CompanyTag {
+  companyId String
+  tagId     String
+  createdAt DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([companyId, tagId])
+  @@index([tagId])
 }
