@@ -32,6 +32,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Bruker ikke funnet" }, { status: 404 });
     }
 
+    // Kalenderen viser data på tvers av organisasjoner: kun for admin
+    if (user.role !== "SUPER_ADMIN") {
+      return NextResponse.json({ error: "Ikke autorisert" }, { status: 403 });
+    }
+
     // Hent query params for datofiltrering
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get("start") ? new Date(searchParams.get("start")!) : new Date();

@@ -172,6 +172,11 @@ export function PublicForm({ form }: PublicFormProps) {
 
       {/* Skjema */}
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+        {/* Honeypot mot spam: skjult for mennesker */}
+        <div aria-hidden="true" style={{ position: "absolute", left: "-10000px", width: 1, height: 1, overflow: "hidden" }}>
+          <label htmlFor="_hp_website">Ikke fyll ut dette feltet</label>
+          <input id="_hp_website" type="text" tabIndex={-1} autoComplete="off" {...register("_hp_website")} />
+        </div>
         <div className="flex flex-wrap gap-4">
           {form.fields
             .filter((field: FormField) => !["HEADING", "PARAGRAPH", "DIVIDER"].includes(field.type))

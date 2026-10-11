@@ -144,18 +144,6 @@ function LoginForm() {
               Logg inn
             </Button>
           </form>
-
-          <div className="mt-8 text-center">
-            <p className="text-[var(--color-muted)]">
-              Har du ikke en konto?{" "}
-              <Link 
-                href="/register" 
-                className="text-[var(--color-primary)] font-medium hover:underline"
-              >
-                Registrer deg
-              </Link>
-            </p>
-          </div>
         </CardContent>
       </Card>
     </>

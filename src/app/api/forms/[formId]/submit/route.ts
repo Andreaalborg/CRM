@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { headers } from "next/headers";
 import { runAutomationsForSubmission } from "@/lib/automations";
+import { rateLimit } from "@/lib/rate-limit";
+
+const HONEYPOT_FIELD = "_hp_website";
 
 export async function POST(
   req: NextRequest,
@@ -9,8 +12,30 @@ export async function POST(
 ) {
   try {
     const { formId } = await params;
-    const body = await req.json();
     const headersList = await headers();
+    const clientIp =
+      (headersList.get("x-forwarded-for") || "").split(",")[0].trim() ||
+      headersList.get("x-real-ip") ||
+      "unknown";
+
+    // Rate-limit før noe databasekall: maks 5 per minutt per IP og skjema
+    if (!rateLimit(`submit:${clientIp}:${formId}`, 5, 60_000)) {
+      return NextResponse.json(
+        { error: "For mange innsendinger. Prøv igjen om litt." },
+        { status: 429 }
+      );
+    }
+
+    const body = await req.json();
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "Ugyldig data" }, { status: 400 });
+    }
+
+    // Honeypot: skjult felt som bare roboter fyller ut. Late som det gikk bra.
+    if (typeof body[HONEYPOT_FIELD] === "string" && body[HONEYPOT_FIELD].trim() !== "") {
+      return NextResponse.json({ success: true, message: "Takk for din henvendelse!" });
+    }
+    delete body[HONEYPOT_FIELD];
 
     // Finn skjemaet
     const form = await db.form.findUnique({

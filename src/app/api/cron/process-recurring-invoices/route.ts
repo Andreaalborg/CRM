@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { requireCronAuth } from "@/lib/cron-auth";
 
 // Beregn neste fakturadato basert på intervall
 function calculateNextDate(currentDate: Date, interval: string, intervalCount: number): Date {
@@ -52,14 +53,11 @@ async function generateInvoiceNumber(organizationId: string): Promise<string> {
 
 // POST /api/cron/process-recurring-invoices - Prosesser gjentakende fakturaer
 export async function POST(request: NextRequest) {
+  // Fail closed: krever CRON_SECRET før noe databasekall
+  const denied = requireCronAuth(request);
+  if (denied) return denied;
+
   try {
-    // Verifiser cron-token
-    const authHeader = request.headers.get("authorization");
-    const cronSecret = process.env.CRON_SECRET;
-    
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "Ikke autorisert" }, { status: 401 });
-    }
 
     const now = new Date();
     

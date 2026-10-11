@@ -69,9 +69,9 @@ export const authOptions: NextAuthOptions = {
 
       // Oppdater token ved session update
       if (trigger === "update" && session) {
-        token.name = session.name;
-        token.organizationId = session.organizationId;
-        token.organizationName = session.organizationName;
+        // Kun navn kan oppdateres fra klienten. organizationId/rolle
+        // settes bare ved innlogging (hindrer bytte til annen organisasjon).
+        if (typeof session.name === "string") token.name = session.name;
       }
 
       return token;

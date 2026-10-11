@@ -1,18 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { requireCronAuth } from "@/lib/cron-auth";
 import { sendEmail, replaceVariables } from "@/lib/email";
 
 // Denne ruten kjøres via cron job for å prosessere planlagte jobber
 // Vercel cron: vercel.json -> { "crons": [{ "path": "/api/cron/process-jobs", "schedule": "*/5 * * * *" }] }
 
 export async function GET(request: NextRequest) {
-  // Verifiser at forespørselen kommer fra Vercel Cron eller har riktig auth
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  // Fail closed: krever CRON_SECRET før noe annet skjer
+  const denied = requireCronAuth(request);
+  if (denied) return denied;
 
   try {
     const now = new Date();

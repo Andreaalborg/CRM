@@ -42,7 +42,11 @@ export async function POST(request: NextRequest) {
     });
 
     // Send e-post
-    const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
+    const baseUrl = (
+      process.env.NEXTAUTH_URL ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      (process.env.VERCEL_ENV === "production" ? "https://crm.intellisenseai.no" : "http://localhost:3000")
+    ).replace(/\/+$/, "");
     const resetUrl = `${baseUrl}/reset-password?token=${token}&email=${encodeURIComponent(email)}`;
 
     await sendEmail({

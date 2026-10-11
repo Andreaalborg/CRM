@@ -70,7 +70,7 @@ export default function HomePage() {
               <Link href="/login">
                 <Button variant="ghost">Logg inn</Button>
               </Link>
-              <Link href="/register">
+              <Link href="/login">
                 <Button className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700">
                   Kom i gang
                 </Button>
@@ -159,7 +159,7 @@ export default function HomePage() {
             </p>
             
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: "16px", marginBottom: "48px" }}>
-              <Link href="/register">
+              <Link href="/login">
                 <Button size="xl" className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 shadow-xl text-lg px-8 group">
                   Start gratis
                   <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
@@ -267,7 +267,7 @@ export default function HomePage() {
                 Opprett din første skjema på under 5 minutter. 
                 Ingen kredittkort nødvendig.
               </p>
-              <Link href="/register">
+              <Link href="/login">
                 <Button 
                   size="xl" 
                   className="bg-white text-indigo-700 hover:bg-slate-100 shadow-xl text-lg px-10 font-semibold"
