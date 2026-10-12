@@ -19,10 +19,20 @@ async function own(id: string, orgId: string) {
 export async function setHandled(id: string, handled: boolean): Promise<R> {
   const c = await requireCustomer({ redirectTo: false });
   if (!(await own(id, c.orgId))) return { ok: false, error: "Fant ikke henvendelsen" };
-  await db.submission.update({ where: { id }, data: { handledAt: handled ? new Date() : null, status: handled ? "CONTACTED" : "NEW" } });
+  await db.submission.update({ where: { id }, data: handled ? { handledAt: new Date(), status: "CONTACTED" } : { handledAt: null, contactedAt: null, status: "NEW" } });
   await db.activityLog.create({ data: { userId: c.userId, action: handled ? "portal.submission.handled" : "portal.submission.reopened", resource: "submission", resourceId: id } });
   revalidatePath("/customer", "layout");
   return { ok: true };
+}
+
+/** Markér som «Kontaktet» (eller angre). via = "svar" når det ble tilbudt etter Svar-knappen. */
+export async function setContacted(id: string, contacted: boolean, via: "knapp" | "svar" = "knapp"): Promise<R> {
+  const c = await requireCustomer({ redirectTo: false });
+  if (!(await own(id, c.orgId))) return { ok: false, error: "Fant ikke henvendelsen" };
+  await db.submission.update({ where: { id }, data: contacted ? { contactedAt: new Date(), status: "CONTACTED" } : { contactedAt: null, status: "NEW" } });
+  await db.activityLog.create({ data: { userId: c.userId, action: contacted ? "portal.submission.contacted" : "portal.submission.uncontacted", resource: "submission", resourceId: id, details: { via } } });
+  revalidatePath("/customer", "layout");
+  return { ok: true, msg: contacted ? "Markert som kontaktet" : "Kontaktet er fjernet" };
 }
 
 export async function saveNote(id: string, _: unknown, f: FormData): Promise<R> {

@@ -8,11 +8,12 @@ export const dynamic = "force-dynamic";
 
 export default async function Oversikt() {
   const c = await requireCustomer();
+  // eslint-disable-next-line react-hooks/purity -- serverkomponent, beregnes per forespørsel
   const since = new Date(Date.now() - 29 * 86400_000); since.setHours(0, 0, 0, 0);
   const [nye, uleste, siste, last30] = await Promise.all([
     db.submission.count({ where: submissionWhere(c.orgId, { status: "ny" }) }),
     db.submission.count({ where: { ...submissionWhere(c.orgId), readAt: null } }),
-    db.submission.findMany({ where: submissionWhere(c.orgId), orderBy: { createdAt: "desc" }, take: 5, select: { id: true, createdAt: true, data: true, readAt: true, handledAt: true, form: { select: { name: true } } } }),
+    db.submission.findMany({ where: submissionWhere(c.orgId), orderBy: { createdAt: "desc" }, take: 5, select: { id: true, createdAt: true, data: true, readAt: true, handledAt: true, contactedAt: true, form: { select: { name: true } } } }),
     db.submission.findMany({ where: { ...submissionWhere(c.orgId), createdAt: { gte: since } }, select: { createdAt: true } }),
   ]);
   const key = (d: Date) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Oslo" }).format(d);
@@ -23,7 +24,7 @@ export default async function Oversikt() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Oversikt</h1>
       <section aria-label="Nøkkeltall" className="grid grid-cols-3 gap-3">
-        {[["Nye (ikke håndtert)", nye], ["Uleste", uleste], ["Siste 30 dager", last30.length]].map(([l, v]) => (
+        {[["Nye (ikke kontaktet)", nye], ["Uleste", uleste], ["Siste 30 dager", last30.length]].map(([l, v]) => (
           <div key={String(l)} className="crm-card p-3 sm:p-4"><p className="text-xs text-[var(--color-brand-muted)] sm:text-sm">{l}</p><p className="mt-1 text-2xl font-bold">{v}</p></div>
         ))}
       </section>

@@ -283,6 +283,7 @@ model Submission {
   notes          String?          @db.Text
   readAt         DateTime?        // fase 4: første gang kunden åpnet innsendingen (ulest-markering)
   handledAt      DateTime?        // fase 4: kunden satte «Håndtert»
+  contactedAt    DateTime?        // trinn 1: kunden markerte «Kontaktet» (f.eks. etter «Svar»)
   
   // Ekstra metadata (notater, tags, etc.)
   metadata       Json?

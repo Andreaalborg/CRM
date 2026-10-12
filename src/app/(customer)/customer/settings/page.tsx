@@ -1,5 +1,6 @@
 import { requireCustomer } from "@/lib/portal/session";
 import { emailHealth } from "@/lib/crm/mailer";
+import { portalNotifyGate } from "@/lib/portal/core";
 import { SettingsForm } from "@/components/portal/DetailActions";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +17,7 @@ export default async function Innstillinger() {
           <dt className="text-[var(--color-brand-muted)]">E-post</dt><dd className="break-all sm:col-span-2">{c.user.email}</dd>
           <dt className="text-[var(--color-brand-muted)]">Bedrift</dt><dd className="sm:col-span-2">{c.orgName}</dd>
         </dl>
-        <SettingsForm name={c.user.name ?? ""} notify={c.user.notifyNewSubmissions} blocked={h.ok && !h.dryRun ? null : "venter på e-postoppsett"} />
+        <SettingsForm name={c.user.name ?? ""} notify={c.user.notifyNewSubmissions} blocked={portalNotifyGate(process.env, h).on ? null : "venter på e-postoppsett"} />
       </section>
       <p className="text-sm text-[var(--color-brand-muted)]">Innlogging skjer med engangslenke. Vil du legge til flere brukere eller endre logo, kontakt IntelliSense på andreaalborg@intellisenseai.no.</p>
     </div>

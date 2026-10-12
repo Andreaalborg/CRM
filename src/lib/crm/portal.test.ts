@@ -47,3 +47,36 @@ test("formatering av felt", () => {
   assert.equal(formatValue(true), "Ja"); assert.equal(formatValue(["a", "b"]), "a, b");
   assert.equal(summary({ fornavn: "Ola", etternavn: "N", email: "o@n.no" }).navn, "Ola N");
 });
+
+import { portalStatus, replyMailto, portalNotifyGate, alertContent } from "../portal/core";
+test("trinn 1: status Ny → Kontaktet → Håndtert", () => {
+  assert.equal(portalStatus({ handledAt: null, contactedAt: null }), "ny");
+  assert.equal(portalStatus({ handledAt: null, contactedAt: new Date() }), "kontaktet");
+  assert.equal(portalStatus({ handledAt: new Date(), contactedAt: new Date() }), "handtert");
+  const w = submissionWhere("o", { status: "kontaktet" }) as Record<string, unknown>;
+  assert.deepEqual([w.handledAt, w.contactedAt], [null, { not: null }]);
+  assert.equal((submissionWhere("o", { status: "ny" }) as Record<string, unknown>).contactedAt, null);
+});
+test("trinn 1: Svar = mailto med Re: og sitert melding", () => {
+  const m = replyMailto({ data: { navn: "Kari Nordmann", epost: "kari@x.no", melding: "Hei\nKan dere ringe?" }, formName: "Kontaktskjema", createdAt: new Date("2026-10-12T08:00:00Z") })!;
+  assert.ok(m.startsWith("mailto:kari@x.no?subject="));
+  const u = new URL(m);
+  assert.equal(u.searchParams.get("subject"), "Re: Kontaktskjema – Kari Nordmann");
+  assert.match(u.searchParams.get("body")!, /skrev Kari Nordmann:\n> Hei\n> Kan dere ringe\?/);
+  assert.ok(!m.includes("+"));
+  assert.equal(replyMailto({ data: { navn: "X", epost: "ikke-epost" }, formName: "F", createdAt: new Date() }), null);
+  assert.equal(replyMailto({ data: { navn: "X", epost: "a@b.no?cc=c@d.no" }, formName: "F", createdAt: new Date() }), null);
+});
+test("trinn 1: varsel er AV uten PORTAL_NOTIFY_ENABLED=1 og grønn e-posthelse", () => {
+  const ok = { ok: true, dryRun: false, reasons: [] };
+  assert.equal(portalNotifyGate({}, ok).on, false);
+  assert.equal(portalNotifyGate({ PORTAL_NOTIFY_ENABLED: "1" }, { ok: false, dryRun: false, reasons: ["domene ikke verifisert"] }).on, false);
+  assert.equal(portalNotifyGate({ PORTAL_NOTIFY_ENABLED: "1" }, { ...ok, dryRun: true }).on, false);
+  assert.equal(portalNotifyGate({ PORTAL_NOTIFY_ENABLED: "1" }, ok).on, true);
+});
+test("trinn 1: varselinnhold har sammendrag og lenke, og escaper HTML", () => {
+  const a = alertContent({ id: "s1", formName: "Kontakt", data: { navn: "<b>Ola</b>", epost: "o@x.no", melding: "Trenger tilbud" }, baseUrl: "https://crm.intellisenseai.no/" });
+  assert.equal(a.url, "https://crm.intellisenseai.no/customer/leads/s1");
+  assert.match(a.text, /Melding: Trenger tilbud/);
+  assert.ok(!a.html.includes("<b>Ola"));
+});
