@@ -47,8 +47,8 @@
   --color-brand-muted: #5F5A77;
 
   /* Fonter */
-  --font-sans: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
-  --font-heading: 'Outfit', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter), 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-sora), 'Sora', ui-sans-serif, system-ui, sans-serif;
 }
 
 /* ============================================
@@ -181,6 +181,13 @@ h1, h2, h3, h4, h5, h6 {
 /* ============================================
    SALGS-CRM (fase 1)
    ============================================ */
+@layer components {
+/* Typografiskala (designreview B5): Sora 700 28/32 H1, Sora 600 18 seksjon, Inter 400 15/14 brødtekst/meta */
+.crm-scope { font-family: var(--font-sans); font-size: 0.9375rem; line-height: 1.5; }
+.crm-scope h1 { font-family: var(--font-heading); font-weight: 700; font-size: 1.75rem; line-height: 1.2; letter-spacing: -0.01em; }
+@media (min-width: 1024px) { .crm-scope h1 { font-size: 2rem; } }
+.crm-scope h2 { font-family: var(--font-heading); font-weight: 600; font-size: 1.125rem; line-height: 1.35; }
+.crm-scope h3 { font-family: var(--font-sans); font-weight: 500; font-size: 1rem; }
 .crm-input {
   display: block;
   width: 100%;
@@ -211,3 +218,4 @@ h1, h2, h3, h4, h5, h6 {
 .crm-btn-ghost:hover { background: var(--color-brand-surface2); }
 .crm-btn:focus-visible, .crm-btn-ghost:focus-visible, .crm-focus:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
 .crm-card { border-radius: 1rem; border: 1px solid var(--color-brand-border); background: #fff; }
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -29,6 +29,23 @@ export function PipelineBoard({ deals: initial }: { deals: BoardDeal[] }) {
   const [error, setError] = useState("");
   const [, start] = useTransition();
   const cardRefs = useRef<Record<string, HTMLElement | null>>({});
+  const scroller = useRef<HTMLDivElement>(null);
+  const [edge, setEdge] = useState({ left: false, right: false });
+  const updateEdge = useCallback(() => {
+    const el = scroller.current;
+    if (!el) return;
+    setEdge({ left: el.scrollLeft > 4, right: el.scrollLeft + el.clientWidth < el.scrollWidth - 4 });
+  }, []);
+  useEffect(() => {
+    updateEdge();
+    window.addEventListener("resize", updateEdge);
+    return () => window.removeEventListener("resize", updateEdge);
+  }, [updateEdge]);
+  function jumpTo(s: Stage) {
+    const col = scroller.current?.querySelector<HTMLElement>(`[data-stage="${s}"]`);
+    col?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "start" });
+    col?.focus({ preventScroll: true });
+  }
 
   const visible = useMemo(() => deals.filter((d) => !kilde || d.kilde === kilde), [deals, kilde]);
 
@@ -130,26 +147,52 @@ export function PipelineBoard({ deals: initial }: { deals: BoardDeal[] }) {
       {error && <p role="alert" className="mb-3 rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
 
       {/* Desktop: kanban med horisontal rulling inne i tavla */}
-      <div className="hidden lg:block overflow-x-auto pb-4">
-        <div className="flex gap-3" style={{ minWidth: `${STAGES.length * 15}rem` }}>
-          {STAGES.map((s) => {
-            const col = visible.filter((d) => d.stage === s);
-            const sum = col.reduce((a, d) => a + (d.verdi ?? 0), 0);
+      <div className="hidden lg:block">
+        <nav aria-label="Steg i pipelinen" className="mb-3 flex flex-wrap items-center gap-x-1 gap-y-1 text-sm">
+          {STAGES.map((s, i) => {
+            const n = visible.filter((d) => d.stage === s).length;
             return (
-              <section key={s} aria-label={STAGE_LABEL[s]}
-                onDragOver={(e) => { e.preventDefault(); setOver(s); }}
-                onDragLeave={() => setOver((o) => (o === s ? null : o))}
-                onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData("text/plain") || drag; setOver(null); if (id) move(id, s); }}
-                data-stage={s}
-                className={cn("flex w-60 shrink-0 flex-col rounded-2xl bg-brand-surface2 p-2", over === s && "ring-2 ring-brand")}>
-                <header className="mb-2 flex items-center justify-between px-1">
-                  <StatusBadge stage={s} />
-                  <span className="text-xs text-brand-muted">{col.length} · {formatNok(sum)}</span>
-                </header>
-                <div className="flex min-h-24 flex-col gap-2">{col.map(card)}</div>
-              </section>
+              <span key={s} className="flex items-center">
+                {i > 0 && <span aria-hidden="true" className="px-1 text-brand-muted">·</span>}
+                <button type="button" onClick={() => jumpTo(s)}
+                  className={cn("crm-focus rounded-lg px-2 py-1 hover:bg-brand-surface2", n ? "font-semibold text-brand-ink" : "text-brand-muted")}>
+                  {STAGE_LABEL[s]} <span className="tabular-nums">{n}</span>
+                </button>
+              </span>
             );
           })}
+        </nav>
+        <div className="relative">
+          <div ref={scroller} onScroll={updateEdge} className="snap-x snap-mandatory overflow-x-auto pb-4 scroll-pl-1">
+            <div className="flex w-max gap-3">
+              {STAGES.map((s) => {
+                const col = visible.filter((d) => d.stage === s);
+                const sum = col.reduce((a, d) => a + (d.verdi ?? 0), 0);
+                return (
+                  <section key={s} aria-label={STAGE_LABEL[s]} tabIndex={-1}
+                    onDragOver={(e) => { e.preventDefault(); setOver(s); }}
+                    onDragLeave={() => setOver((o) => (o === s ? null : o))}
+                    onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData("text/plain") || drag; setOver(null); if (id) move(id, s); }}
+                    data-stage={s}
+                    className={cn("flex w-[260px] min-w-[260px] shrink-0 snap-start flex-col rounded-2xl bg-brand-surface2 p-2 outline-none", over === s && "ring-2 ring-brand")}>
+                    <header className="mb-2 flex items-center justify-between px-1">
+                      <StatusBadge stage={s} />
+                      <span className="text-xs text-brand-muted">{col.length} · {formatNok(sum)}</span>
+                    </header>
+                    <div className="flex min-h-24 flex-col gap-2">
+                      {col.length ? col.map(card) : <p className="px-1 py-6 text-center text-sm text-brand-muted">Ingen deals her</p>}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          </div>
+          {edge.left && <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-0 w-10 bg-gradient-to-r from-brand-bg to-transparent" />}
+          {edge.right && (
+            <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 flex w-20 items-center justify-end bg-gradient-to-l from-brand-bg via-brand-bg/80 to-transparent pr-1">
+              <ChevronRight className="h-6 w-6 text-brand" />
+            </div>
+          )}
         </div>
       </div>
 

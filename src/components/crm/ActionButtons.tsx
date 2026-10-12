@@ -2,7 +2,7 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Clock } from "lucide-react";
-import { completeNextStep, completeTask, postponeTask, moveDeal, deleteCompany } from "@/lib/crm/actions";
+import { completeNextStep, postponeNextStep, completeTask, postponeTask, moveDeal, deleteCompany } from "@/lib/crm/actions";
 
 export function NextStepDoneButton({ dealId, label = "Gjort" }: { dealId: string; label?: string }) {
   const [pending, start] = useTransition();
@@ -11,6 +11,17 @@ export function NextStepDoneButton({ dealId, label = "Gjort" }: { dealId: string
     <button type="button" className="crm-btn-ghost" disabled={pending}
       onClick={() => start(async () => { await completeNextStep(dealId); router.refresh(); })}>
       <Check className="h-4 w-4" aria-hidden="true" /> {label}
+    </button>
+  );
+}
+
+export function PostponeNextStepButton({ dealId }: { dealId: string }) {
+  const [pending, start] = useTransition();
+  const router = useRouter();
+  return (
+    <button type="button" className="crm-btn-ghost" disabled={pending}
+      onClick={() => start(async () => { await postponeNextStep(dealId, 1); router.refresh(); })}>
+      <Clock className="h-4 w-4" aria-hidden="true" /> Utsett 1 dag
     </button>
   );
 }

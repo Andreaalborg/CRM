@@ -30,7 +30,10 @@ export function MobileNav() {
   return (
     <div className="md:hidden border-b border-slate-200 bg-white">
       <div className="flex h-14 items-center justify-between px-4">
-        <Link href="/dashboard" className="font-bold text-slate-900">Kundedata</Link>
+        <Link href="/dashboard" className="flex items-center" aria-label="IntelliSense – til dashbordet">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/intellisense-logo.svg" alt="" width={130} height={28} className="h-7 w-auto" />
+        </Link>
         <button type="button" aria-expanded={open} aria-controls="mobilmeny" onClick={() => setOpen(!open)}
           className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-700 hover:bg-slate-100" aria-label={open ? "Lukk meny" : "Åpne meny"}>
           {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -40,7 +43,7 @@ export function MobileNav() {
         <nav id="mobilmeny" aria-label="Hovedmeny" className="border-t border-slate-200 px-2 py-2">
           {all.map((l) => (
             <Link key={l.href} href={l.href} onClick={() => setOpen(false)}
-              className={cn("block rounded-lg px-3 py-2.5 text-sm font-medium", pathname === l.href ? "bg-indigo-50 text-indigo-800" : "text-slate-700 hover:bg-slate-100")}>
+              className={cn("block rounded-lg px-3 py-2.5 text-sm font-medium", pathname === l.href ? "bg-brand-tint text-brand font-semibold" : "text-slate-700 hover:bg-slate-100")}>
               {l.name}
             </Link>
           ))}

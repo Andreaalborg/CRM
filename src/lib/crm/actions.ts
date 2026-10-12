@@ -11,7 +11,7 @@ import {
   validateStageChange, probabilityAfterMove, nextPosition, type Stage,
 } from "./core";
 
-export type ActionResult = { ok: true; id?: string } | { ok: false; error: string };
+export type ActionResult = { ok: true; id?: string } | { ok: false; error: string; field?: string; link?: { href: string; label: string } };
 
 async function requireAdmin() {
   const session = await getServerSession(authOptions);
@@ -80,19 +80,20 @@ function checkOrgnr(raw: string | null): { orgnr: string | null; error?: string 
 
 async function duplicateError(orgnr: string, exceptId?: string) {
   const existing = await db.company.findUnique({ where: { orgnr }, select: { id: true, navn: true } });
-  if (existing && existing.id !== exceptId) return `Orgnr ${orgnr} finnes allerede (${existing.navn})`;
+  if (existing && existing.id !== exceptId)
+    return { ok: false as const, field: "orgnr", error: `Orgnr ${orgnr} finnes allerede (${existing.navn})`, link: { href: `/dashboard/crm/firma/${existing.id}`, label: `Åpne ${existing.navn}` } };
   return null;
 }
 
 export async function createCompany(_: ActionResult | null, f: FormData): Promise<ActionResult> {
   const user = await requireAdmin();
   const data = companyData(f);
-  if (!data.navn) return { ok: false, error: "Navn mangler" };
+  if (!data.navn) return { ok: false, error: "Navn mangler", field: "navn" };
   const { orgnr, error } = checkOrgnr(str(f, "orgnr"));
-  if (error) return { ok: false, error };
+  if (error) return { ok: false, error, field: "orgnr" };
   if (orgnr) {
     const dup = await duplicateError(orgnr);
-    if (dup) return { ok: false, error: dup };
+    if (dup) return dup;
   }
   const dealTittel = str(f, "dealTittel");
   let id: string;
@@ -116,7 +117,7 @@ export async function createCompany(_: ActionResult | null, f: FormData): Promis
     });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002")
-      return { ok: false, error: `Orgnr ${orgnr} finnes allerede` };
+      return { ok: false, field: "orgnr", error: `Orgnr ${orgnr} finnes allerede` };
     throw e;
   }
   revalidateCrm();
@@ -126,12 +127,12 @@ export async function createCompany(_: ActionResult | null, f: FormData): Promis
 export async function updateCompany(id: string, _: ActionResult | null, f: FormData): Promise<ActionResult> {
   const user = await requireAdmin();
   const data = companyData(f);
-  if (!data.navn) return { ok: false, error: "Navn mangler" };
+  if (!data.navn) return { ok: false, error: "Navn mangler", field: "navn" };
   const { orgnr, error } = checkOrgnr(str(f, "orgnr"));
-  if (error) return { ok: false, error };
+  if (error) return { ok: false, error, field: "orgnr" };
   if (orgnr) {
     const dup = await duplicateError(orgnr, id);
-    if (dup) return { ok: false, error: dup };
+    if (dup) return dup;
   }
   try {
     const before = await db.company.findUniqueOrThrow({ where: { id } });
@@ -144,7 +145,7 @@ export async function updateCompany(id: string, _: ActionResult | null, f: FormD
     });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002")
-      return { ok: false, error: `Orgnr ${orgnr} finnes allerede` };
+      return { ok: false, field: "orgnr", error: `Orgnr ${orgnr} finnes allerede` };
     throw e;
   }
   revalidateCrm(id);
@@ -331,6 +332,19 @@ export async function completeNextStep(dealId: string): Promise<ActionResult> {
   await db.deal.update({ where: { id: dealId }, data: { nesteSteg: null, nesteStegDato: null } });
   await db.crmActivity.create({ data: { companyId: d.companyId, dealId, type: "SYSTEM", tekst: `Neste steg utført: ${d.nesteSteg ?? "(uten tekst)"}`, userId: user.id, kilde: "manuell" } });
   await audit(db, user.id, "next_step_done", "deal", dealId);
+  revalidateCrm(d.companyId);
+  return { ok: true, id: dealId };
+}
+
+/** Utsett neste steg på en deal med N dager (fra i dag hvis forfalt). */
+export async function postponeNextStep(dealId: string, days: number): Promise<ActionResult> {
+  const user = await requireAdmin();
+  const d = await db.deal.findUniqueOrThrow({ where: { id: dealId } });
+  const now = new Date();
+  const base = !d.nesteStegDato || d.nesteStegDato < now ? now : d.nesteStegDato;
+  const nesteStegDato = new Date(base.getTime() + days * 86400_000);
+  await db.deal.update({ where: { id: dealId }, data: { nesteStegDato } });
+  await audit(db, user.id, "next_step_postponed", "deal", dealId, { days });
   revalidateCrm(d.companyId);
   return { ok: true, id: dealId };
 }

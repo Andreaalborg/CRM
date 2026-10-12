@@ -1,4 +1,5 @@
 "use client";
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -13,13 +14,17 @@ const tabs = [
 
 export function CrmNav() {
   const p = usePathname();
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    ref.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [p]);
   return (
-    <nav aria-label="Salgs-CRM" className="mb-6 flex flex-wrap gap-1 rounded-2xl border border-brand-border bg-white p-1">
+    <nav ref={ref} aria-label="Salgs-CRM" className="-mx-4 mb-6 flex snap-x snap-mandatory gap-1 overflow-x-auto border-y border-brand-border bg-white p-1 px-4 [scrollbar-width:none] sm:mx-0 sm:rounded-2xl sm:border sm:px-1">
       {tabs.map((t) => {
         const active = t.href === "/dashboard/crm" ? p === t.href : p.startsWith(t.href);
         return (
           <Link key={t.href} href={t.href} aria-current={active ? "page" : undefined}
-            className={cn("crm-focus flex min-h-11 flex-1 items-center justify-center rounded-xl px-3 text-sm font-semibold sm:flex-none sm:px-5",
+            className={cn("crm-focus flex min-h-11 shrink-0 snap-start items-center justify-center whitespace-nowrap rounded-xl px-4 text-sm font-semibold sm:px-5",
               active ? "bg-brand text-white" : "text-brand-ink hover:bg-brand-surface2")}>
             {t.label}
           </Link>

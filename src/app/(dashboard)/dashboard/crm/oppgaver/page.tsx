@@ -5,7 +5,7 @@ import { createTask } from "@/lib/crm/actions";
 import { PageHeader } from "@/components/crm/PageHeader";
 import { StatusBadge, DueBadge } from "@/components/crm/StatusBadge";
 import { TaskButtons, NextStepDoneButton } from "@/components/crm/ActionButtons";
-import { ActionForm, Field } from "@/components/crm/Forms";
+import { ActionForm, Expander, Field } from "@/components/crm/Forms";
 import { formatDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -52,6 +52,7 @@ export default async function OppgaverPage() {
         </div>
         <section className="crm-card p-4 sm:p-6 h-fit" aria-labelledby="h-ny">
           <h2 id="h-ny" className="mb-3 font-semibold">Ny oppgave</h2>
+          <Expander label="Ny oppgave">
           <ActionForm action={createTask} submitLabel="Legg til" resetOnSuccess className="space-y-3">
             <Field name="tittel" label="Oppgave" required />
             <Field name="forfall" label="Forfall" type="date" required />
@@ -63,6 +64,7 @@ export default async function OppgaverPage() {
               </select>
             </div>
           </ActionForm>
+          </Expander>
         </section>
       </div>
     </div>

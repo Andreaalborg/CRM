@@ -1,15 +1,17 @@
 import type { Metadata } from "next";
-import { DM_Sans, Outfit } from "next/font/google";
+import { Inter, Sora } from "next/font/google";
 import "./globals.css";
 
-const dmSans = DM_Sans({
-  variable: "--font-dm-sans",
+const inter = Inter({
+  variable: "--font-inter",
+  weight: ["400", "500", "600"],
   subsets: ["latin"],
   display: "swap",
 });
 
-const outfit = Outfit({
-  variable: "--font-outfit",
+const sora = Sora({
+  variable: "--font-sora",
+  weight: ["600", "700"],
   subsets: ["latin"],
   display: "swap",
 });
@@ -32,8 +34,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="no" suppressHydrationWarning>
-      <body className={`${dmSans.variable} ${outfit.variable} antialiased`}>
+    <html lang="nb" suppressHydrationWarning>
+      <body className={`${inter.variable} ${sora.variable} antialiased`}>
         {children}
       </body>
     </html>

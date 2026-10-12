@@ -23,13 +23,14 @@ export function StatusBadge({ stage, className }: { stage: Stage; className?: st
   );
 }
 
-export function DueBadge({ state }: { state: "forfalt" | "i-dag" | "senere" | "ingen" }) {
+export function DueBadge({ state, days }: { state: "forfalt" | "i-dag" | "senere" | "ingen"; days?: number }) {
   if (state === "ingen") return null;
   const map = {
     forfalt: ["Forfalt", "bg-red-50 text-red-800 ring-red-600/20"],
     "i-dag": ["I dag", "bg-amber-50 text-amber-800 ring-amber-600/20"],
     senere: ["Senere", "bg-slate-100 text-slate-700 ring-slate-500/20"],
   } as const;
-  const [label, cls] = map[state];
-  return <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset", cls)}>{label}</span>;
+  const [base, cls] = map[state];
+  const label = state === "forfalt" && days ? `${base} ${days} d` : base;
+  return <span className={cn("inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset", cls)}>{label}</span>;
 }

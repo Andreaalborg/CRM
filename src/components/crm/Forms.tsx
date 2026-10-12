@@ -1,8 +1,25 @@
 "use client";
 
-import { startTransition, useActionState, useEffect, useRef } from "react";
+import { createContext, startTransition, useActionState, useContext, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import type { ActionResult } from "@/lib/crm/actions";
 import { STAGES, STAGE_LABEL } from "@/lib/crm/core";
+
+type FieldErr = { field?: string; error: string; link?: { href: string; label: string } } | null;
+const FieldErrorCtx = createContext<FieldErr>(null);
+
+function useFieldError(name: string) {
+  const e = useContext(FieldErrorCtx);
+  return e && e.field === name ? e : null;
+}
+
+function FieldError({ id, err }: { id: string; err: NonNullable<FieldErr> }) {
+  return (
+    <p id={id} className="mt-1 text-sm font-medium text-red-800">
+      {err.error}{err.link && <> · <Link href={err.link.href} className="underline underline-offset-2">{err.link.label}</Link></>}
+    </p>
+  );
+}
 
 type Act = (prev: ActionResult | null, f: FormData) => Promise<ActionResult>;
 
@@ -10,12 +27,17 @@ export function Field({ name, label, type = "text", defaultValue, required, plac
   name: string; label: string; type?: string; defaultValue?: string | number | null; required?: boolean; placeholder?: string; hint?: string;
 } & Omit<React.InputHTMLAttributes<HTMLInputElement>, "defaultValue" | "name">) {
   const id = `f-${name}`;
+  const err = useFieldError(name);
+  const describedBy = [err && `${id}-feil`, hint && `${id}-hint`].filter(Boolean).join(" ") || undefined;
   return (
     <div>
       <label htmlFor={id} className="crm-label">{label}{required && <span aria-hidden="true"> *</span>}</label>
       <input id={id} name={name} type={type} defaultValue={defaultValue ?? undefined} required={required} placeholder={placeholder}
-        aria-describedby={hint ? `${id}-hint` : undefined} className="crm-input" {...rest} />
-      {hint && <p id={`${id}-hint`} className="mt-1 text-xs text-brand-muted">{hint}</p>}
+        aria-describedby={describedBy} aria-invalid={err ? true : undefined}
+        className={err ? "crm-input border-red-700 ring-1 ring-red-700" : "crm-input"} {...rest} />
+      {err && <FieldError id={`${id}-feil`} err={err} />}
+      {type === "date" && <DateEcho inputId={id} />}
+      {hint && <p id={`${id}-hint`} className="mt-1 text-sm text-brand-muted">{hint}</p>}
     </div>
   );
 }
@@ -26,7 +48,7 @@ export function Area({ name, label, defaultValue, rows = 3, hint }: { name: stri
     <div>
       <label htmlFor={id} className="crm-label">{label}</label>
       <textarea id={id} name={name} rows={rows} defaultValue={defaultValue ?? undefined} className="crm-input" aria-describedby={hint ? `${id}-hint` : undefined} />
-      {hint && <p id={`${id}-hint`} className="mt-1 text-xs text-brand-muted">{hint}</p>}
+      {hint && <p id={`${id}-hint`} className="mt-1 text-sm text-brand-muted">{hint}</p>}
     </div>
   );
 }
@@ -54,15 +76,21 @@ export function ActionForm({ action, submitLabel, children, className, resetOnSu
   const [state, formAction, pending] = useActionState(action, null);
   const ref = useRef<HTMLFormElement>(null);
   useEffect(() => { if (state?.ok && resetOnSuccess) ref.current?.reset(); }, [state, resetOnSuccess]);
+  useEffect(() => {
+    if (state && !state.ok && state.field) ref.current?.querySelector<HTMLElement>(`[name="${state.field}"]`)?.focus();
+  }, [state]);
+  const fieldErr: FieldErr = state && !state.ok && state.field ? state : null;
   return (
+    <FieldErrorCtx.Provider value={fieldErr}>
     <form ref={ref} className={className ?? "space-y-4"}
       // onSubmit i stedet for action={…}: React 19 nullstiller skjemaet etter action, også ved valideringsfeil.
       onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); startTransition(() => formAction(fd)); }}>
       {children}
-      {state && !state.ok && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{state.error}</p>}
+      {state && !state.ok && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{state.error}{state.link && <> · <Link href={state.link.href} className="underline underline-offset-2">{state.link.label}</Link></>}</p>}
       {state?.ok && successText && <p role="status" className="text-sm text-green-800">{successText}</p>}
       <Submit label={submitLabel} pending={pending} />
     </form>
+    </FieldErrorCtx.Provider>
   );
 }
 
@@ -87,5 +115,52 @@ export function CompanyFields({ c }: { c?: Record<string, string | number | null
       <div className="sm:col-span-2"><Area name="salgsvinkel" label="Salgsvinkel" defaultValue={c?.salgsvinkel as string} /></div>
       <div className="sm:col-span-2"><Area name="notater" label="Notater" defaultValue={c?.notater as string} /></div>
     </div>
+  );
+}
+
+const nbDate = new Intl.DateTimeFormat("nb-NO", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+function osloIsoInDays(days: number) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Oslo" }).format(new Date(Date.now() + days * 86400_000));
+}
+
+/** Viser valgt dato som «12. okt. 2026» (nettleserens datovelger følger OS-locale) + hurtigvalg. */
+function DateEcho({ inputId }: { inputId: string }) {
+  const [v, setV] = useState("");
+  useEffect(() => {
+    const el = document.getElementById(inputId) as HTMLInputElement | null;
+    if (!el) return;
+    const sync = () => setV(el.value);
+    sync();
+    el.addEventListener("input", sync); el.addEventListener("change", sync);
+    const form = el.form; const onReset = () => setTimeout(sync, 0);
+    form?.addEventListener("reset", onReset);
+    return () => { el.removeEventListener("input", sync); el.removeEventListener("change", sync); form?.removeEventListener("reset", onReset); };
+  }, [inputId]);
+  const pick = (days: number) => {
+    const el = document.getElementById(inputId) as HTMLInputElement | null;
+    if (!el) return;
+    const d = osloIsoInDays(days);
+    el.value = d; setV(d);
+  };
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+      <span className="text-brand-muted" aria-live="polite">{v ? nbDate.format(new Date(v + "T00:00:00Z")) : "Ingen dato valgt"}</span>
+      <span aria-hidden="true" className="text-brand-muted">·</span>
+      {([["I dag", 0], ["I morgen", 1], ["Neste uke", 7]] as const).map(([l, n]) => (
+        <button key={l} type="button" onClick={() => pick(n)} className="crm-focus rounded-md px-1.5 py-0.5 font-medium text-brand hover:bg-brand-surface2">{l}</button>
+      ))}
+    </div>
+  );
+}
+
+/** «+ Ny …»-knapp som åpner et skjema (designreview B6). */
+export function Expander({ label, children, defaultOpen = false }: { label: string; children: React.ReactNode; defaultOpen?: boolean }) {
+  return (
+    <details className="group" open={defaultOpen}>
+      <summary className="crm-btn-ghost w-full cursor-pointer list-none sm:w-auto [&::-webkit-details-marker]:hidden">
+        <span className="group-open:hidden">+ {label}</span><span className="hidden group-open:inline">Lukk skjema</span>
+      </summary>
+      <div className="mt-3">{children}</div>
+    </details>
   );
 }

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireCustomer } from "@/lib/portal/session";
 import { submissionWhere, matchesQuery, type PortalFilter } from "@/lib/portal/core";
@@ -22,17 +23,17 @@ export default async function Henvendelser({ searchParams }: { searchParams: Pro
         <a href={`/customer/leads/export${qs ? `?${qs}` : ""}`} className="crm-btn-ghost text-sm" download>Last ned CSV ({rows.length})</a>
       </div>
       <form method="get" className="crm-card grid grid-cols-2 gap-3 p-4 sm:grid-cols-5" aria-label="Filter">
-        <div className="col-span-2"><label className="crm-label" htmlFor="q">Søk</label><input id="q" name="q" defaultValue={sp.q} className="crm-input" placeholder="Navn, e-post, tekst …" /></div>
+        <div className="col-span-2"><label className="crm-label" htmlFor="q">Søk</label><input id="q" name="q" defaultValue={sp.q} className="crm-input" placeholder="Søk på navn, e-post, melding …" /></div>
         <div><label className="crm-label" htmlFor="status">Status</label>
           <select id="status" name="status" defaultValue={sp.status ?? ""} className="crm-input"><option value="">Alle</option><option value="ny">Ny</option><option value="handtert">Håndtert</option></select></div>
         <div><label className="crm-label" htmlFor="form">Skjema</label>
           <select id="form" name="form" defaultValue={sp.form ?? ""} className="crm-input"><option value="">Alle</option>{forms.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></div>
         <div><label className="crm-label" htmlFor="fra">Fra dato</label><input id="fra" name="fra" type="date" defaultValue={sp.fra} className="crm-input" /></div>
         <div className="col-span-2 sm:col-span-1 sm:col-start-5"><label className="crm-label" htmlFor="til">Til dato</label><input id="til" name="til" type="date" defaultValue={sp.til} className="crm-input" /></div>
-        <div className="col-span-2 flex gap-2 sm:col-span-5"><button className="crm-btn">Filtrer</button><a href="/customer/leads" className="crm-btn-ghost">Nullstill</a></div>
+        <div className="col-span-2 flex gap-2 sm:col-span-5"><button className="crm-btn">Filtrer</button><Link href="/customer/leads" className="crm-btn-ghost">Nullstill</Link></div>
       </form>
       <p className="text-sm text-[var(--color-brand-muted)]" aria-live="polite">{rows.length} treff</p>
-      <SubmissionList rows={rows} />
+      <SubmissionList rows={rows} filtered={!!qs} />
     </div>
   );
 }

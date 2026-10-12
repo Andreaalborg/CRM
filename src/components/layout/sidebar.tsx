@@ -127,11 +127,12 @@ export function Sidebar() {
         collapsed ? "justify-center px-2" : "px-5"
       )}>
         <Link href="/dashboard" className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center flex-shrink-0 shadow-lg shadow-indigo-500/30">
-            <FileText className="w-5 h-5 text-white" />
-          </div>
-          {!collapsed && (
-            <span className="font-bold text-lg text-slate-900">Kundedata</span>
+          {collapsed ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src="/brand/intellisense-symbol.svg" alt="IntelliSense" width={32} height={32} className="h-8 w-8" />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src="/brand/intellisense-logo.svg" alt="IntelliSense" width={150} height={32} className="h-8 w-auto" />
           )}
         </Link>
       </div>
@@ -147,8 +148,8 @@ export function Sidebar() {
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200",
                 isActive
-                  ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-500/30"
-                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+                  ? "bg-brand-tint text-brand font-semibold shadow-[inset_3px_0_0_var(--color-brand)]"
+                  : "text-brand-muted hover:bg-brand-surface2 hover:text-brand-ink",
                 collapsed && "justify-center px-0"
               )}
               title={collapsed ? item.name : undefined}
@@ -164,7 +165,7 @@ export function Sidebar() {
           <>
             {!collapsed && (
               <div className="pt-4 pb-2 px-3">
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                <span className="text-xs font-semibold text-brand-muted uppercase tracking-wider">
                   Admin
                 </span>
               </div>
@@ -178,8 +179,8 @@ export function Sidebar() {
                   className={cn(
                     "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200",
                     isActive
-                      ? "bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/30"
-                      : "text-amber-700 hover:bg-amber-50",
+                      ? "bg-brand-tint text-brand font-semibold shadow-[inset_3px_0_0_var(--color-brand)]"
+                      : "text-brand-muted hover:bg-brand-surface2 hover:text-brand-ink",
                     collapsed && "justify-center px-0"
                   )}
                   title={collapsed ? item.name : undefined}
@@ -204,8 +205,8 @@ export function Sidebar() {
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200",
                 isActive
-                  ? "bg-indigo-50 text-indigo-700"
-                  : "text-slate-500 hover:bg-slate-100 hover:text-slate-700",
+                  ? "bg-brand-tint text-brand font-semibold shadow-[inset_3px_0_0_var(--color-brand)]"
+                  : "text-brand-muted hover:bg-brand-surface2 hover:text-brand-ink",
                 collapsed && "justify-center px-0"
               )}
               title={collapsed ? item.name : undefined}
@@ -223,7 +224,7 @@ export function Sidebar() {
           <div className="flex flex-col items-center gap-2">
             <Avatar className="w-9 h-9 ring-2 ring-slate-100">
               <AvatarImage src={session?.user?.image || undefined} />
-              <AvatarFallback className="bg-gradient-to-br from-indigo-500 to-purple-500 text-white text-sm font-medium">
+              <AvatarFallback className="bg-brand text-white text-sm font-medium">
                 {getInitials(session?.user?.name || "U")}
               </AvatarFallback>
             </Avatar>
@@ -241,7 +242,7 @@ export function Sidebar() {
           <div className="flex items-center gap-3 p-2 rounded-xl bg-slate-50">
             <Avatar className="w-10 h-10 ring-2 ring-white shadow-sm">
               <AvatarImage src={session?.user?.image || undefined} />
-              <AvatarFallback className="bg-gradient-to-br from-indigo-500 to-purple-500 text-white text-sm font-medium">
+              <AvatarFallback className="bg-brand text-white text-sm font-medium">
                 {getInitials(session?.user?.name || "U")}
               </AvatarFallback>
             </Avatar>

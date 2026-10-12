@@ -10,8 +10,15 @@ export function StatusPill({ handled }: { handled: boolean }) {
     : <span className="inline-flex rounded-full bg-[var(--color-brand-tint)] px-2.5 py-0.5 text-xs font-medium text-[var(--color-brand)] ring-1 ring-inset ring-[var(--color-brand)]/20">Ny</span>;
 }
 
-export function SubmissionList({ rows }: { rows: Row[] }) {
-  if (!rows.length) return <p className="crm-card p-4 text-sm text-[var(--color-brand-muted)]">Ingen henvendelser her ennå.</p>;
+export function SubmissionList({ rows, filtered = false }: { rows: Row[]; filtered?: boolean }) {
+  if (!rows.length && filtered) return <p className="crm-card p-4 text-sm text-[var(--color-brand-muted)]">Ingen treff. Prøv et annet søk eller nullstill filtrene.</p>;
+  if (!rows.length) return (
+    <div className="crm-card px-4 py-8 text-center">
+      <p className="text-3xl" aria-hidden="true">📭</p>
+      <p className="mt-2 font-semibold">Ingen henvendelser ennå</p>
+      <p className="mx-auto mt-1 max-w-xs text-sm text-[var(--color-brand-muted)]">Når noen fyller ut et skjema på nettsiden din, dukker det opp her.</p>
+    </div>
+  );
   return (
     <ul className="space-y-2">
       {rows.map((r) => {
