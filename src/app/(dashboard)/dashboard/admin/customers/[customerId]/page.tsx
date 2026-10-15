@@ -201,14 +201,12 @@ export default async function CustomerDetailPage({ params }: Props) {
                 </div>
               </div>
               <div style={{ display: "flex", gap: "8px" }}>
-                <Button variant="outline" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  <ExternalLink style={{ width: "14px", height: "14px" }} />
-                  Logg inn som kunde
-                </Button>
-                <Button style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  <Edit style={{ width: "14px", height: "14px" }} />
-                  Rediger
-                </Button>
+                <a href="#innstillinger" style={{ textDecoration: "none" }}>
+                  <Button style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Edit style={{ width: "14px", height: "14px" }} />
+                    Rediger
+                  </Button>
+                </a>
               </div>
             </div>
           </CardContent>
@@ -429,7 +427,7 @@ export default async function CustomerDetailPage({ params }: Props) {
           {/* Sidebar */}
           <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
             {/* Bedriftsinformasjon */}
-            <CustomerSettings organization={organization} />
+            <div id="innstillinger"><CustomerSettings organization={organization} /></div>
 
             {/* Automasjoner */}
             <Card>

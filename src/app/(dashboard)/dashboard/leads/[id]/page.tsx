@@ -34,7 +34,7 @@ export default async function LeadDetailPage({ params }: Props) {
   const submission = await db.submission.findFirst({
     where: {
       id,
-      organizationId: session.user.organizationId,
+      ...(session.user.role === "SUPER_ADMIN" ? {} : { organizationId: session.user.organizationId }),
     },
     include: {
       form: {

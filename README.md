@@ -34,3 +34,7 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Miljøvariabler: CRM_PUBLIC_URL
+
+Sett `CRM_PUBLIC_URL=https://crm.intellisenseai.no` i Vercel (Project → Settings → Environment Variables, miljø **Production**) og redeploy. Brukes til kanoniske lenker i e-poster/innloggingslenker (`src/lib/base-url.ts`). Uten verdi faller koden tilbake til `https://crm.intellisenseai.no`, men den bør settes eksplisitt slik at preview-/git-URL-er aldri lekker inn i lenker.

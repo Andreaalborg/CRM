@@ -17,14 +17,16 @@ interface SubmissionWithForm {
   createdAt: Date;
   handledAt: Date | null;
   contactedAt: Date | null;
+  organization?: { name: string } | null;
   form: { name: string; slug: string; fields: { name: string; label: string; type: string }[] };
 }
 
-async function getSubmissions(organizationId: string): Promise<SubmissionWithForm[]> {
+async function getSubmissions(organizationId: string, isStaff: boolean): Promise<SubmissionWithForm[]> {
   const submissions = await db.submission.findMany({
-    where: { organizationId },
+    where: isStaff ? {} : { organizationId },
     orderBy: { createdAt: "desc" },
     include: {
+      organization: { select: { name: true } },
       form: {
         select: { name: true, slug: true, fields: { select: { name: true, label: true, type: true }, orderBy: { order: "asc" } } },
       },
@@ -60,7 +62,8 @@ export default async function LeadsPage() {
     return null;
   }
 
-  const submissions = await getSubmissions(session.user.organizationId);
+  const isStaff = session.user.role === "SUPER_ADMIN";
+  const submissions = await getSubmissions(session.user.organizationId, isStaff);
 
   return (
     <>
@@ -142,6 +145,7 @@ export default async function LeadsPage() {
                         </td>
                         <td className="p-4">
                           <Badge variant="outline">{submission.form.name}</Badge>
+                          {isStaff && submission.organization && <Badge variant="muted">{submission.organization.name}</Badge>}
                         </td>
                         <td className="p-4">
                           <Badge variant={shownStatus === "HANDTERT" ? "success" : statusColors[shownStatus]}>

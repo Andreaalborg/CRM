@@ -13,7 +13,7 @@ interface RecentSubmission {
 }
 
 async function getDashboardData(organizationId: string) {
-  const [formsCount, submissionsCount, recentSubmissionsData, automationsCount] = await Promise.all([
+  const [formsCount, submissionsCount, recentSubmissionsData, automationsCount, emailsSent] = await Promise.all([
     db.form.count({
       where: { organizationId },
     }),
@@ -32,6 +32,9 @@ async function getDashboardData(organizationId: string) {
     }),
     db.automation.count({
       where: { organizationId },
+    }),
+    db.emailLog.count({
+      where: { sentAt: { not: null }, submission: { organizationId } },
     }),
   ]);
 
@@ -62,8 +65,8 @@ async function getDashboardData(organizationId: string) {
     },
     {
       name: "E-poster sendt",
-      value: 0,
-      change: "0",
+      value: emailsSent,
+      change: "",
       changeType: "neutral" as const,
       icon: Mail,
       href: "/dashboard/emails",
