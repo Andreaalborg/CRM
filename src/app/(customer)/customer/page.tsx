@@ -13,7 +13,7 @@ export default async function Oversikt() {
   const [nye, uleste, siste, last30] = await Promise.all([
     db.submission.count({ where: submissionWhere(c.orgId, { status: "ny" }) }),
     db.submission.count({ where: { ...submissionWhere(c.orgId), readAt: null } }),
-    db.submission.findMany({ where: submissionWhere(c.orgId), orderBy: { createdAt: "desc" }, take: 5, select: { id: true, createdAt: true, data: true, readAt: true, handledAt: true, contactedAt: true, form: { select: { name: true } } } }),
+    db.submission.findMany({ where: submissionWhere(c.orgId), orderBy: { createdAt: "desc" }, take: 5, select: { id: true, createdAt: true, data: true, readAt: true, handledAt: true, contactedAt: true, form: { select: { name: true, fields: { select: { name: true, label: true, type: true }, orderBy: { order: "asc" as const } } } } } }),
     db.submission.findMany({ where: { ...submissionWhere(c.orgId), createdAt: { gte: since } }, select: { createdAt: true } }),
   ]);
   const key = (d: Date) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Oslo" }).format(d);

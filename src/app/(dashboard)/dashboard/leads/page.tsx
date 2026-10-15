@@ -3,17 +3,21 @@ import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Header } from "@/components/layout/header";
 import { Card, CardContent, Badge, Button, Input } from "@/components/ui";
-import { Users, Search, Filter, Eye, Mail, MoreVertical } from "lucide-react";
+import { Users, Search, Filter, Eye, Mail } from "lucide-react";
 import { formatDateTime, formatRelativeTime } from "@/lib/utils";
 import Link from "next/link";
 import { ExportButton } from "@/components/leads";
+import { DeleteButton } from "@/components/admin/DeleteButton";
+import { summary, portalStatus } from "@/lib/portal/core";
 
 interface SubmissionWithForm {
   id: string;
   status: "NEW" | "CONTACTED" | "QUALIFIED" | "CONVERTED" | "LOST" | "SPAM";
   data: Record<string, unknown>;
   createdAt: Date;
-  form: { name: string; slug: string };
+  handledAt: Date | null;
+  contactedAt: Date | null;
+  form: { name: string; slug: string; fields: { name: string; label: string; type: string }[] };
 }
 
 async function getSubmissions(organizationId: string): Promise<SubmissionWithForm[]> {
@@ -22,7 +26,7 @@ async function getSubmissions(organizationId: string): Promise<SubmissionWithFor
     orderBy: { createdAt: "desc" },
     include: {
       form: {
-        select: { name: true, slug: true },
+        select: { name: true, slug: true, fields: { select: { name: true, label: true, type: true }, orderBy: { order: "asc" } } },
       },
     },
   });
@@ -40,6 +44,7 @@ const statusColors = {
 } as const;
 
 const statusLabels = {
+  HANDTERT: "Håndtert",
   NEW: "Ny",
   CONTACTED: "Kontaktet",
   QUALIFIED: "Kvalifisert",
@@ -113,9 +118,12 @@ export default async function LeadsPage() {
                 <tbody className="divide-y divide-[var(--color-border)]">
                   {submissions.map((submission) => {
                     const data = submission.data as Record<string, unknown>;
-                    const name = (data.name as string) || (data.navn as string) || (data.full_name as string) || "Ukjent";
-                    const email = (data.email as string) || (data.epost as string) || "";
-                    const phone = (data.phone as string) || (data.telefon as string) || "";
+                    const sum = summary(data, submission.form.fields);
+                    const name = sum.navn === "Uten navn" ? "Ukjent" : sum.navn;
+                    const email = sum.epost ?? "";
+                    const phone = sum.telefon ?? "";
+                    // «Håndtert» (satt i kundeportalen) skal ikke vises som «Kontaktet»
+                    const shownStatus = submission.handledAt ? "HANDTERT" : submission.status === "NEW" && submission.contactedAt ? "CONTACTED" : submission.status;
 
                     return (
                       <tr key={submission.id} className="hover:bg-[var(--color-input)] transition-colors">
@@ -136,8 +144,8 @@ export default async function LeadsPage() {
                           <Badge variant="outline">{submission.form.name}</Badge>
                         </td>
                         <td className="p-4">
-                          <Badge variant={statusColors[submission.status]}>
-                            {statusLabels[submission.status]}
+                          <Badge variant={shownStatus === "HANDTERT" ? "success" : statusColors[shownStatus]}>
+                            {statusLabels[shownStatus]}
                           </Badge>
                         </td>
                         <td className="p-4">
@@ -162,9 +170,11 @@ export default async function LeadsPage() {
                                 </Button>
                               </a>
                             )}
-                            <Button variant="ghost" size="icon-sm">
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
+                            {session.user.role === "SUPER_ADMIN" && (
+                              <DeleteButton url={`/api/leads/${submission.id}`} label="Slett lead" ariaLabel={`Slett lead ${name}`} iconOnly
+                                confirmText={`Slette leaden fra «${name}» for godt? Dette kan ikke angres.`}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-red-600 hover:bg-red-50" />
+                            )}
                           </div>
                         </td>
                       </tr>

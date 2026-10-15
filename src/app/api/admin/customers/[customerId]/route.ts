@@ -121,21 +121,32 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     }
 
     const { customerId } = await context.params;
-
-    // Slett organisasjon (kaskade sletter alt relatert)
-    await db.organization.delete({
+    const org = await db.organization.findUnique({
       where: { id: customerId },
+      include: { users: { select: { id: true, email: true, role: true } }, _count: { select: { forms: true, submissions: true } } },
     });
+    if (!org) return NextResponse.json({ error: "Kunde ikke funnet" }, { status: 404 });
+    // Vern: aldri slett en organisasjon som inneholder en administrator (eller deg selv)
+    if (org.users.some((u) => u.role === "SUPER_ADMIN" || u.id === session.user.id) || session.user.organizationId === customerId) {
+      return NextResponse.json({ error: "Kan ikke slette en organisasjon som har administratorer" }, { status: 400 });
+    }
 
-    // Logg aktivitet
-    await db.activityLog.create({
-      data: {
-        userId: session.user.id,
-        action: "admin.customer_deleted",
-        resource: "organization",
-        resourceId: customerId,
-      },
-    });
+    // Hard sletting. Kaskade fjerner brukere, skjemaer, innsendinger, automasjoner og maler.
+    // Innloggingslenker og aktivitetslogg for brukerne ryddes eksplisitt. Revisjonsraden skrives etterpå uten personopplysninger.
+    const userIds = org.users.map((u) => u.id);
+    await db.$transaction([
+      db.loginToken.deleteMany({ where: { userId: { in: userIds } } }),
+      db.organization.delete({ where: { id: customerId } }),
+      db.activityLog.create({
+        data: {
+          userId: session.user.id,
+          action: "admin.customer_deleted",
+          resource: "organization",
+          resourceId: customerId,
+          details: { name: org.name, users: org.users.length, forms: org._count.forms, submissions: org._count.submissions },
+        },
+      }),
+    ]);
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -138,7 +138,7 @@ export async function POST(
     });
 
     // Fase 4: varsel kun til kundens egne brukere som har slått det på (sperret til Resend er verifisert)
-    await notifyNewSubmission({ id: submission.id, organizationId: form.organizationId, formName: form.name, data: body })
+    await notifyNewSubmission({ id: submission.id, organizationId: form.organizationId, formName: form.name, data: body, fields: form.fields.map((f) => ({ name: f.name, label: f.label, type: f.type })) })
       .catch((e) => console.error("Varsel feilet:", e));
 
     return NextResponse.json({

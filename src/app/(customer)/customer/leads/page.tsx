@@ -12,7 +12,7 @@ export default async function Henvendelser({ searchParams }: { searchParams: Pro
   const f: PortalFilter = { q: sp.q, status: sp.status, formId: sp.form, fra: sp.fra, til: sp.til };
   const [forms, all] = await Promise.all([
     db.form.findMany({ where: { organizationId: c.orgId }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
-    db.submission.findMany({ where: submissionWhere(c.orgId, f), orderBy: { createdAt: "desc" }, take: 500, select: { id: true, createdAt: true, data: true, readAt: true, handledAt: true, contactedAt: true, form: { select: { name: true } } } }),
+    db.submission.findMany({ where: submissionWhere(c.orgId, f), orderBy: { createdAt: "desc" }, take: 500, select: { id: true, createdAt: true, data: true, readAt: true, handledAt: true, contactedAt: true, form: { select: { name: true, fields: { select: { name: true, label: true, type: true }, orderBy: { order: "asc" as const } } } } } }),
   ]);
   const rows = all.filter((r) => matchesQuery(r.data, f.q));
   const qs = new URLSearchParams(Object.entries({ q: sp.q, status: sp.status, form: sp.form, fra: sp.fra, til: sp.til }).filter(([, v]) => v) as [string, string][]).toString();

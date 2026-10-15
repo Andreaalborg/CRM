@@ -6,11 +6,12 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { sendEmail } from "@/lib/email";
+import { appBaseUrl } from "@/lib/base-url";
 import { requireCustomer } from "./session";
 import { newLoginToken, LINK_TTL_SELF_MIN, LINK_TTL_ADMIN_H } from "./core";
 
 type R = { ok: true; msg?: string } | { ok: false; error: string };
-const base = () => (process.env.CRM_PUBLIC_URL || process.env.NEXTAUTH_URL || "https://crm.intellisenseai.no").replace(/\/$/, "");
+const base = () => appBaseUrl();
 
 async function own(id: string, orgId: string) {
   return db.submission.findFirst({ where: { id, organizationId: orgId }, select: { id: true } });

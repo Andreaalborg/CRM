@@ -80,3 +80,41 @@ test("trinn 1: varselinnhold har sammendrag og lenke, og escaper HTML", () => {
   assert.match(a.text, /Melding: Trenger tilbud/);
   assert.ok(!a.html.includes("<b>Ola"));
 });
+
+import { decide } from "../../proxy";
+import { osloStamp } from "../portal/core";
+import { appBaseUrl, CANONICAL_BASE_URL } from "../base-url";
+test("feilrettinger: kundebrukere kommer ikke inn i /dashboard eller interne API-er", () => {
+  for (const p of ["/dashboard", "/dashboard/forms", "/dashboard/leads/abc", "/dashboard/automations", "/dashboard/emails", "/dashboard/settings"]) {
+    assert.equal(decide(p, "CUSTOMER"), "to-customer", p);
+    assert.equal(decide(p, undefined), "to-customer", p);
+    assert.equal(decide(p, "SUPER_ADMIN"), "ok", p);
+  }
+  for (const p of ["/api/leads/x/status", "/api/forms", "/api/forms/f1", "/api/automations", "/api/admin/customers/x"]) assert.equal(decide(p, "CUSTOMER"), "forbidden", p);
+  assert.equal(decide("/api/forms/f1/submit", "CUSTOMER"), "ok");
+  assert.equal(decide("/customer/leads", "CUSTOMER"), "ok");
+});
+test("feilrettinger: e-post/navn/telefon finnes via felttype eller form, ikke bare label", () => {
+  const fields = [{ name: "field_afbq", label: "Field afbq", type: "EMAIL" }, { name: "field_x1", label: "Ditt navn", type: "TEXT" }, { name: "field_p9", label: "Field p9", type: "PHONE" }];
+  const s = summary({ field_x1: "Kari Nordmann", field_afbq: "kari@x.no", field_p9: "91 23 45 67" }, fields);
+  assert.deepEqual(s, { navn: "Kari Nordmann", epost: "kari@x.no", telefon: "91 23 45 67" });
+  // uten skjemafelt: gjenkjenn på verdiens form
+  const t = summary({ field_a: "Ola Hansen", field_b: "ola@x.no", field_c: "+47 900 00 001", field_d: "Lang melding\nmed linjeskift" });
+  assert.deepEqual(t, { navn: "Ola Hansen", epost: "ola@x.no", telefon: "+47 900 00 001" });
+  assert.ok(replyMailto({ data: { field_afbq: "kari@x.no", field_x1: "Kari" }, formName: "F", createdAt: new Date(), fields })!.startsWith("mailto:kari@x.no"));
+  assert.equal(fieldLabel("field_x1", fields), "Ditt navn");
+});
+test("feilrettinger: CSV bruker feltetiketter og Oslo-tid", () => {
+  const csv = toCsv([{ createdAt: new Date("2026-10-12T05:13:00Z"), form: "K", status: "Ny", data: { field_x1: "Kari" } }], [{ name: "field_x1", label: "Ditt navn", type: "TEXT" }]);
+  assert.match(csv, /Dato;Skjema;Status;Ditt navn;Notat/);
+  assert.match(csv, /2026-10-12 07:13;K;Ny;Kari/);
+  assert.equal(osloStamp(new Date("2026-01-15T23:30:00Z")), "2026-01-16 00:30");
+});
+test("feilrettinger: innloggingslenker bruker kanonisk base-URL, aldri vercel.app/NEXTAUTH_URL", () => {
+  const old = { a: process.env.CRM_PUBLIC_URL, b: process.env.NEXTAUTH_URL };
+  delete process.env.CRM_PUBLIC_URL; process.env.NEXTAUTH_URL = "https://crm-git-main-x.vercel.app";
+  assert.equal(appBaseUrl(), CANONICAL_BASE_URL);
+  process.env.CRM_PUBLIC_URL = "https://crm.example.no/"; assert.equal(appBaseUrl(), "https://crm.example.no");
+  if (old.a === undefined) delete process.env.CRM_PUBLIC_URL; else process.env.CRM_PUBLIC_URL = old.a;
+  if (old.b === undefined) delete process.env.NEXTAUTH_URL; else process.env.NEXTAUTH_URL = old.b;
+});

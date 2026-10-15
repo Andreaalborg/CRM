@@ -6,6 +6,7 @@ import { Card, CardContent, Badge, Button } from "@/components/ui";
 import { FileText, Plus, MoreVertical, Eye, Edit, Trash2, Copy, ExternalLink } from "lucide-react";
 import { formatRelativeTime, formatNumber } from "@/lib/utils";
 import Link from "next/link";
+import { DeleteButton } from "@/components/admin/DeleteButton";
 
 interface FormWithCount {
   id: string;
@@ -134,6 +135,11 @@ export default async function FormsPage() {
                         <Eye className="h-4 w-4" />
                       </Button>
                     </Link>
+                    {session.user.role === "SUPER_ADMIN" && (
+                      <DeleteButton url={`/api/forms/${form.id}`} label="Slett skjema" ariaLabel={`Slett skjema ${form.name}`} iconOnly
+                        confirmText={`Slette skjemaet «${form.name}» for godt?\n\nDette sletter også ${form._count.submissions} innsending(er). Dette kan ikke angres.`}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-red-600 hover:bg-red-50" />
+                    )}
                     {form.status === "PUBLISHED" && (
                       <Link href={`/f/${form.slug}`} target="_blank">
                         <Button variant="ghost" size="icon-sm">

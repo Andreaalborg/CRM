@@ -1,3 +1,4 @@
+import { appBaseUrl } from "@/lib/base-url";
 import { notFound, redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -64,7 +65,7 @@ export default async function FormDetailPage({ params }: PageProps) {
   }
 
   const recentSubmissions = await getRecentSubmissions(formId);
-  const formUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/f/${form.slug}`;
+  const formUrl = `${appBaseUrl()}/f/${form.slug}`;
   const isPublished = form.status === "PUBLISHED";
 
   return (

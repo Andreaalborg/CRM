@@ -9,8 +9,8 @@ export async function GET(req: NextRequest) {
   try { c = await requireCustomer({ redirectTo: false }); } catch { return new Response("Ikke autorisert", { status: 401 }); }
   const sp = req.nextUrl.searchParams;
   const f = { q: sp.get("q") ?? undefined, status: sp.get("status") ?? undefined, formId: sp.get("form") ?? undefined, fra: sp.get("fra") ?? undefined, til: sp.get("til") ?? undefined };
-  const rows = (await db.submission.findMany({ where: submissionWhere(c.orgId, f), orderBy: { createdAt: "desc" }, take: 500, select: { createdAt: true, data: true, notes: true, handledAt: true, contactedAt: true, form: { select: { name: true } } } }))
+  const rows = (await db.submission.findMany({ where: submissionWhere(c.orgId, f), orderBy: { createdAt: "desc" }, take: 500, select: { createdAt: true, data: true, notes: true, handledAt: true, contactedAt: true, form: { select: { name: true, fields: { select: { name: true, label: true, type: true }, orderBy: { order: "asc" as const } } } } } }))
     .filter((r) => matchesQuery(r.data, f.q));
-  const csv = toCsv(rows.map((r) => ({ createdAt: r.createdAt, form: r.form.name, status: PORTAL_STATUS[portalStatus(r)], data: r.data, notes: r.notes })));
+  const csv = toCsv(rows.map((r) => ({ createdAt: r.createdAt, form: r.form.name, status: PORTAL_STATUS[portalStatus(r)], data: r.data, notes: r.notes })), rows.flatMap((r) => r.form.fields));
   return new Response(csv, { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="henvendelser-${new Date().toISOString().slice(0, 10)}.csv"`, "cache-control": "no-store" } });
 }

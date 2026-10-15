@@ -1,3 +1,4 @@
+import { appBaseUrl } from "@/lib/base-url";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -64,7 +65,7 @@ export async function POST(
     };
 
     // Felles header og footer
-    const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
+    const baseUrl = appBaseUrl();
     const invoiceUrl = `${baseUrl}/invoice/${invoice.id}`;
     
     const emailHeader = `

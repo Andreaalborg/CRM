@@ -50,7 +50,11 @@ const LABELS: Record<string, string> = {
   telefon: "Telefon", phone: "Telefon", tlf: "Telefon", melding: "Melding", message: "Melding", firma: "Firma",
   company: "Firma", adresse: "Adresse", postnr: "Postnummer", sted: "Sted", tjeneste: "Tjeneste",
 };
-export function fieldLabel(key: string): string {
+export type FieldMeta = { name: string; label: string; type: string };
+/** Visningsnavn: skjemaets egen label hvis den finnes og ikke er autogenerert, ellers gjetting fra nøkkelen. */
+export function fieldLabel(key: string, fields?: FieldMeta[]): string {
+  const m = fields?.find((f) => f.name === key);
+  if (m?.label?.trim()) return m.label.trim();
   if (LABELS[key.toLowerCase()]) return LABELS[key.toLowerCase()];
   const s = key.replace(/[_-]+/g, " ").replace(/([a-zæøå])([A-ZÆØÅ])/g, "$1 $2").trim();
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -62,12 +66,31 @@ export function formatValue(v: unknown): string {
   if (typeof v === "object") return Object.entries(v as Record<string, unknown>).map(([k, x]) => `${fieldLabel(k)}: ${formatValue(x)}`).join("; ");
   return String(v);
 }
-/** Finn navn/e-post/telefon for listevisning. */
-export function summary(data: unknown): { navn: string; epost: string | null; telefon: string | null } {
+const EMAIL_RE = /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/;
+const isEmail = (v: unknown): v is string => typeof v === "string" && EMAIL_RE.test(v.trim());
+const isPhone = (v: unknown): v is string => typeof v === "string" && /^\+?[\d\s().-]{7,20}$/.test(v.trim()) && (v.match(/\d/g)?.length ?? 0) >= 7;
+const nonEmpty = (v: unknown): v is string => typeof v === "string" && v.trim() !== "";
+/** Finn navn/e-post/telefon for listevisning og Svar. Bruker felttype (EMAIL/PHONE/første tekstfelt) når skjemafeltene er kjent, ellers nøkkelnavn og verdiens form. */
+export function summary(data: unknown, fields?: FieldMeta[]): { navn: string; epost: string | null; telefon: string | null } {
   const d = (data ?? {}) as Record<string, unknown>;
-  const get = (...k: string[]) => { for (const x of k) { const v = d[x]; if (typeof v === "string" && v.trim()) return v.trim(); } return null; };
-  const navn = get("navn", "name") ?? [get("fornavn"), get("etternavn")].filter(Boolean).join(" ");
-  return { navn: navn || get("firma", "company") || "Uten navn", epost: get("epost", "email", "e-post"), telefon: get("telefon", "phone", "tlf") };
+  const keys = Object.keys(d);
+  const typeOf = (k: string) => fields?.find((f) => f.name === k)?.type;
+  const get = (...k: string[]) => { for (const x of k) { const v = d[x]; if (nonEmpty(v)) return v.trim(); } return null; };
+  const byType = (t: string, ok: (v: unknown) => boolean) => { const k = keys.find((x) => typeOf(x) === t && nonEmpty(d[x]) && ok(d[x])); return k ? String(d[k]).trim() : null; };
+  const byShape = (ok: (v: unknown) => boolean) => { const k = keys.find((x) => ok(d[x])); return k ? String(d[k]).trim() : null; };
+  const epost = get("epost", "email", "e-post") ?? byType("EMAIL", isEmail) ?? byShape(isEmail);
+  const telefon = get("telefon", "phone", "tlf") ?? byType("PHONE", () => true) ?? byShape(isPhone);
+  let navn = get("navn", "name") ?? [get("fornavn"), get("etternavn")].filter(Boolean).join(" ");
+  if (!navn) {
+    const hint = keys.find((k) => nonEmpty(d[k]) && /(^|[\s_-])(navn|name)([\s_-]|$)/i.test(`${k} ${fields?.find((f) => f.name === k)?.label ?? ""}`) && !isEmail(d[k]));
+    if (hint) navn = String(d[hint]).trim();
+  }
+  if (!navn) {
+    // første korte tekstfelt som ikke er e-post/telefon
+    const k = keys.find((x) => nonEmpty(d[x]) && !isEmail(d[x]) && !isPhone(d[x]) && String(d[x]).trim().length <= 60 && !String(d[x]).includes("\n") && (!fields || ["TEXT", undefined].includes(typeOf(x))));
+    if (k) navn = String(d[k]).trim();
+  }
+  return { navn: navn || get("firma", "company") || "Uten navn", epost: epost && isEmail(epost) ? epost : null, telefon };
 }
 
 /** CSV med semikolon (Excel nb-NO), BOM og vern mot formel-injeksjon. */
@@ -76,10 +99,14 @@ export function csvCell(v: unknown): string {
   if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
-export function toCsv(rows: { createdAt: Date; form: string; status: string; data: unknown; notes?: string | null }[]): string {
+/** Oslo-tid, «2026-10-12 07:13». */
+export function osloStamp(d: Date): string {
+  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Oslo", dateStyle: "short", timeStyle: "short" }).format(d);
+}
+export function toCsv(rows: { createdAt: Date; form: string; status: string; data: unknown; notes?: string | null }[], fields: FieldMeta[] = []): string {
   const keys = [...new Set(rows.flatMap((r) => Object.keys((r.data ?? {}) as object)))];
-  const head = ["Dato", "Skjema", "Status", ...keys.map(fieldLabel), "Notat"];
-  const lines = rows.map((r) => [r.createdAt.toISOString().replace("T", " ").slice(0, 16), r.form, r.status, ...keys.map((k) => (r.data as Record<string, unknown>)?.[k]), r.notes ?? ""].map(csvCell).join(";"));
+  const head = ["Dato", "Skjema", "Status", ...keys.map((k) => fieldLabel(k, fields)), "Notat"];
+  const lines = rows.map((r) => [osloStamp(r.createdAt), r.form, r.status, ...keys.map((k) => (r.data as Record<string, unknown>)?.[k]), r.notes ?? ""].map(csvCell).join(";"));
   return "\uFEFF" + [head.map(csvCell).join(";"), ...lines].join("\r\n");
 }
 
@@ -89,13 +116,13 @@ export function notificationRecipients(users: { email: string; role: string; org
 }
 
 /** «Svar»: mailto til avsenderen med «Re: …» og opprinnelig melding sitert. Null hvis ingen gyldig e-post. */
-export function replyMailto(o: { data: unknown; formName: string; createdAt: Date }): string | null {
-  const sum = summary(o.data);
-  const to = sum.epost && /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(sum.epost) ? sum.epost : null;
+export function replyMailto(o: { data: unknown; formName: string; createdAt: Date; fields?: FieldMeta[] }): string | null {
+  const sum = summary(o.data, o.fields);
+  const to = sum.epost;
   if (!to) return null;
   const d = (o.data ?? {}) as Record<string, unknown>;
   const msgKey = Object.keys(d).find((k) => ["melding", "message", "beskjed", "kommentar"].includes(k.toLowerCase()));
-  const original = msgKey ? formatValue(d[msgKey]) : Object.entries(d).map(([k, v]) => `${fieldLabel(k)}: ${formatValue(v)}`).join("\n");
+  const original = msgKey ? formatValue(d[msgKey]) : Object.entries(d).map(([k, v]) => `${fieldLabel(k, o.fields)}: ${formatValue(v)}`).join("\n");
   const when = new Intl.DateTimeFormat("nb-NO", { dateStyle: "long", timeStyle: "short", timeZone: "Europe/Oslo" }).format(o.createdAt);
   const subject = `Re: ${o.formName}${sum.navn && sum.navn !== "Uten navn" ? ` – ${sum.navn}` : ""}`;
   const body = `Hei${sum.navn && sum.navn !== "Uten navn" ? ` ${sum.navn.split(" ")[0]}` : ""},\n\n\n\n${when} skrev ${sum.navn}:\n${original.split("\n").map((l) => `> ${l}`).join("\n")}\n`;
@@ -113,8 +140,8 @@ export function portalNotifyGate(env: Record<string, string | undefined>, health
 
 const esc = (x: string) => x.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 /** Innhold i varselet: sammendrag (navn, kontakt, utdrag av melding) + lenke til innsendingen i portalen. */
-export function alertContent(o: { id: string; formName: string; data: unknown; baseUrl: string }) {
-  const sum = summary(o.data);
+export function alertContent(o: { id: string; formName: string; data: unknown; baseUrl: string; fields?: FieldMeta[] }) {
+  const sum = summary(o.data, o.fields);
   const d = (o.data ?? {}) as Record<string, unknown>;
   const msgKey = Object.keys(d).find((k) => ["melding", "message", "beskjed", "kommentar"].includes(k.toLowerCase()));
   const msg = msgKey ? formatValue(d[msgKey]) : "";

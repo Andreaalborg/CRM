@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { sendEmail } from "@/lib/email";
 import crypto from "crypto";
+import { appBaseUrl } from "@/lib/base-url";
 
 // POST /api/auth/forgot-password - Send tilbakestillingslenke
 export async function POST(request: NextRequest) {
@@ -42,11 +43,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Send e-post
-    const baseUrl = (
-      process.env.NEXTAUTH_URL ||
-      process.env.NEXT_PUBLIC_APP_URL ||
-      (process.env.VERCEL_ENV === "production" ? "https://crm.intellisenseai.no" : "http://localhost:3000")
-    ).replace(/\/+$/, "");
+    const baseUrl = appBaseUrl();
     const resetUrl = `${baseUrl}/reset-password?token=${token}&email=${encodeURIComponent(email)}`;
 
     await sendEmail({

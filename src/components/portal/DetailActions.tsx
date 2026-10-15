@@ -13,13 +13,23 @@ export function HandledToggle({ id, handled }: { id: string; handled: boolean })
   );
 }
 export function NoteForm({ id, notes }: { id: string; notes: string }) {
-  const [state, action, pending] = useActionState(saveNote.bind(null, id), null);
+  const [text, setText] = useState(notes);
+  const [state, setState] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [pending, start] = useTransition(); const router = useRouter();
   return (
-    <form action={action} className="space-y-2">
+    <form className="space-y-2" onSubmit={(e) => {
+      e.preventDefault();
+      const fd = new FormData(); fd.set("notes", text);
+      start(async () => {
+        const r = await saveNote(id, null, fd);
+        setState(r.ok ? { ok: true, msg: "Lagret" } : { ok: false, msg: r.error });
+        if (r.ok) router.refresh();
+      });
+    }}>
       <label htmlFor="notes" className="crm-label">Internt notat (bare synlig for dere)</label>
-      <textarea id="notes" name="notes" defaultValue={notes} rows={4} className="crm-input" />
-      <button className="crm-btn" disabled={pending}>Lagre notat</button>
-      {state && <p role={state.ok ? "status" : "alert"} className={`text-sm ${state.ok ? "text-green-800" : "text-red-800"}`}>{state.ok ? state.msg : state.error}</p>}
+      <textarea id="notes" name="notes" value={text} onChange={(e) => { setText(e.target.value); setState(null); }} rows={4} className="crm-input" />
+      <button className="crm-btn" disabled={pending}>{pending ? "Lagrer …" : "Lagre notat"}</button>
+      {state && <p role={state.ok ? "status" : "alert"} className={`text-sm font-medium ${state.ok ? "text-green-800" : "text-red-800"}`}>{state.ok ? "✓ " : ""}{state.msg}</p>}
     </form>
   );
 }

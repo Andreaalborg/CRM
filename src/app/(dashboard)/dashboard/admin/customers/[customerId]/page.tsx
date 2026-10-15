@@ -12,6 +12,7 @@ import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
 import { formatDateTime, formatRelativeTime } from "@/lib/utils";
 import { CustomerSettings } from "@/components/admin/customer-settings";
+import { DeleteButton } from "@/components/admin/DeleteButton";
 import { LoginLinkButton } from "@/components/portal/LoginLinkButton";
 
 interface Props {
@@ -509,19 +510,12 @@ export default async function CustomerDetailPage({ params }: Props) {
                 <p style={{ fontSize: "13px", color: "#6b7280", marginBottom: "12px" }}>
                   Disse handlingene kan ikke angres.
                 </p>
-                <Button 
-                  variant="outline" 
-                  style={{ 
-                    borderColor: "#ef4444", 
-                    color: "#ef4444",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px"
-                  }}
-                >
-                  <Trash2 style={{ width: "14px", height: "14px" }} />
-                  Slett kunde
-                </Button>
+                <DeleteButton
+                  url={`/api/admin/customers/${organization.id}`}
+                  label="Slett kunde"
+                  redirectTo="/dashboard/admin/customers"
+                  confirmText={`Slette «${organization.name}» for godt?\n\nDette sletter kunden, ${organization.users.length} bruker(e), ${organization.forms.length} skjema(er) og ${totalLeads} innsending(er). Dette kan ikke angres.`}
+                />
               </CardContent>
             </Card>
           </div>

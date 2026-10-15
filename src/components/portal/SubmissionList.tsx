@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { summary, portalStatus, replyMailto, PORTAL_STATUS, type PortalStatusKey } from "@/lib/portal/core";
+import { type FieldMeta, summary, portalStatus, replyMailto, PORTAL_STATUS, type PortalStatusKey } from "@/lib/portal/core";
 import { ReplyButton } from "./DetailActions";
 
-export type Row = { id: string; createdAt: Date; data: unknown; form: { name: string }; readAt: Date | null; handledAt: Date | null; contactedAt?: Date | null };
+export type Row = { id: string; createdAt: Date; data: unknown; form: { name: string; fields?: FieldMeta[] }; readAt: Date | null; handledAt: Date | null; contactedAt?: Date | null };
 const fmt = (d: Date) => new Intl.DateTimeFormat("nb-NO", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Oslo" }).format(d);
 
 const PILL: Record<PortalStatusKey, string> = {
@@ -26,7 +26,7 @@ export function SubmissionList({ rows, filtered = false }: { rows: Row[]; filter
   return (
     <ul className="space-y-2">
       {rows.map((r) => {
-        const s = summary(r.data); const unread = !r.readAt; const st = portalStatus(r); const mail = replyMailto({ data: r.data, formName: r.form.name, createdAt: r.createdAt });
+        const s = summary(r.data, r.form.fields); const unread = !r.readAt; const st = portalStatus(r); const mail = replyMailto({ data: r.data, formName: r.form.name, createdAt: r.createdAt, fields: r.form.fields });
         return (
           <li key={r.id} className={`crm-card overflow-hidden hover:border-[var(--color-brand)] ${unread ? "border-l-4 border-l-[var(--color-brand)]" : ""}`}>
             <Link href={`/customer/leads/${r.id}`} className="crm-focus flex items-start gap-3 p-4">

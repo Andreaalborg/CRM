@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireCustomer } from "@/lib/portal/session";
+import { SignOutButton } from "@/components/portal/SignOutButton";
 import { PortalNav } from "@/components/portal/PortalNav";
 
 // Fase 4: kundeportal (mobil først). Bare kundebrukere; data avgrenses alltid til egen organisasjon.
@@ -18,9 +19,7 @@ export default async function CustomerLayout({ children }: { children: React.Rea
               <span className="block truncate font-semibold">{c.orgName}</span>
             </span>
           </Link>
-          {/* Full navigasjon til NextAuth-utlogging (ikke klientruting). */}
-          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
-          <a href="/api/auth/signout?callbackUrl=/customer/login" className="crm-btn-ghost text-sm">Logg ut</a>
+          <SignOutButton />
         </div>
         <PortalNav />
       </header>

@@ -141,17 +141,12 @@ export async function DELETE(
     const { formId } = await params;
     const session = await getServerSession(authOptions);
     
-    if (!session?.user?.organizationId) {
-      return NextResponse.json({ error: "Ikke autorisert" }, { status: 401 });
+    if (!session?.user || session.user.role !== "SUPER_ADMIN") {
+      return NextResponse.json({ error: "Ikke autorisert" }, { status: 403 });
     }
 
-    // Sjekk at skjema tilhører organisasjonen
-    const form = await db.form.findFirst({
-      where: {
-        id: formId,
-        organizationId: session.user.organizationId,
-      },
-    });
+    // Administrator kan slette skjemaer (alle kunder). Kaskade fjerner felt og innsendinger.
+    const form = await db.form.findUnique({ where: { id: formId } });
 
     if (!form) {
       return NextResponse.json({ error: "Skjema ikke funnet" }, { status: 404 });
@@ -169,7 +164,7 @@ export async function DELETE(
         action: "form.deleted",
         resource: "form",
         resourceId: formId,
-        details: { name: form.name },
+        details: { name: form.name, organizationId: form.organizationId },
       },
     });
 

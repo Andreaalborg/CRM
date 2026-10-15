@@ -11,13 +11,14 @@ export const dynamic = "force-dynamic";
 export default async function Detalj({ params }: { params: Promise<{ id: string }> }) {
   const c = await requireCustomer();
   const { id } = await params;
-  const s = await db.submission.findFirst({ where: { id, organizationId: c.orgId }, include: { form: { select: { name: true } } } });
+  const s = await db.submission.findFirst({ where: { id, organizationId: c.orgId }, include: { form: { select: { name: true, fields: { select: { name: true, label: true, type: true }, orderBy: { order: "asc" as const } } } } } });
   if (!s) notFound(); // andres innsendinger gir 404 (ikke 403) – avslører ikke at de finnes
   if (!s.readAt) await db.submission.update({ where: { id }, data: { readAt: new Date() } });
   const d = (s.data ?? {}) as Record<string, unknown>;
-  const sum = summary(d);
+  const fields = s.form.fields;
+  const sum = summary(d, fields);
   const st = portalStatus(s);
-  const mail = replyMailto({ data: d, formName: s.form.name, createdAt: s.createdAt });
+  const mail = replyMailto({ data: d, formName: s.form.name, createdAt: s.createdAt, fields });
   const fmt = new Intl.DateTimeFormat("nb-NO", { dateStyle: "long", timeStyle: "short", timeZone: "Europe/Oslo" }).format(s.createdAt);
   return (
     <div className="space-y-4">
@@ -34,7 +35,7 @@ export default async function Detalj({ params }: { params: Promise<{ id: string 
         <h2 id="felt" className="mb-3 font-semibold">Innsendt informasjon</h2>
         <dl className="divide-y divide-[var(--color-brand-border)]">
           {Object.entries(d).map(([k, v]) => (
-            <div key={k} className="grid gap-1 py-2 sm:grid-cols-3"><dt className="text-sm font-medium text-[var(--color-brand-muted)]">{fieldLabel(k)}</dt><dd className="whitespace-pre-wrap break-words sm:col-span-2">{formatValue(v)}</dd></div>
+            <div key={k} className="grid gap-1 py-2 sm:grid-cols-3"><dt className="text-sm font-medium text-[var(--color-brand-muted)]">{fieldLabel(k, fields)}</dt><dd className="whitespace-pre-wrap break-words sm:col-span-2">{formatValue(v)}</dd></div>
           ))}
         </dl>
       </section>
