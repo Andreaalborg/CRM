@@ -1,0 +1,579 @@
+diff --git a/DATABASE.md b/DATABASE.md
+index 208ef67..ef50cc0 100644
+--- a/DATABASE.md
++++ b/DATABASE.md
+@@ -179,3 +179,6 @@ FOREIGN KEY ("recurringInvoiceId") REFERENCES "RecurringInvoice"("id") ON DELETE
+ 
+ 
+ 
++
++## Henvendelser: lagringstid og idempotens (16.10.2026)
++Ingen skjemaendring. Idempotens-nøkkelen ligger i `CrmActivity.kilde` (`nettside/<kilde>#<ekstern_id>`). Lagringstid for innkommende henvendelser: 12 måneder etter siste aktivitet (se `src/lib/crm/inbound-retention.ts`, cron-rute `inbound-retention`, tørrkjøring som standard).
+diff --git a/README.md b/README.md
+index 9c1ccf3..0329dac 100644
+--- a/README.md
++++ b/README.md
+@@ -38,3 +38,12 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
+ ## Miljøvariabler: CRM_PUBLIC_URL
+ 
+ Sett `CRM_PUBLIC_URL=https://crm.intellisenseai.no` i Vercel (Project → Settings → Environment Variables, miljø **Production**) og redeploy. Brukes til kanoniske lenker i e-poster/innloggingslenker (`src/lib/base-url.ts`). Uten verdi faller koden tilbake til `https://crm.intellisenseai.no`, men den bør settes eksplisitt slik at preview-/git-URL-er aldri lekker inn i lenker.
++
++## Innkommende henvendelser (kontaktskjema, e-post hei@, chat)
++`POST /api/v1/inbound` (HMAC `X-IS-Timestamp`/`X-IS-Signature` med `INBOUND_WEBHOOK_SECRET`) oppretter Company/Contact/Deal i INNKOMMENDE.
++- **Idempotens:** felt `ekstern_id` (Message-ID / skjema-nøkkel). Samme id to ganger → `200 {idempotent:true}`, ingen duplikat. Ingen skjemaendring (lagres i `CrmActivity.kilde` = `nettside/<kilde>#<id>`, serialisert med `pg_advisory_xact_lock`).
++- **Kilder:** `kontakt` → «Kontaktskjema», `epost` → «E-post (hei@)», `chat`, `tilbud`, `ghl`. Auto-svar/no-reply (`auto_submitted`, `noreply@`, `mailer-daemon`) ignoreres (200 `ignored`).
++- **Rate limit:** 30/min per `klient_ip` (saltet hash fra nettsiden, signert i body), ellers `x-forwarded-for`.
++- **Varsel til eier:** `INBOUND_NOTIFY_ENABLED=1` (standard AV). Mottaker = `OWNER_NOTIFY_EMAILS` (ellers `andreaalborg@intellisenseai.no`) filtrert mot eier-vakten (standardadresse + SUPER_ADMIN i DB, env kan ikke legge til nye). Avsender `EMAIL_FROM`, reply-to `andreaalborg@intellisenseai.no`. Respekterer `OUTREACH_DRY_RUN=1`, Resend-helsesjekk (verifisert domene) og sender aldri til innsender. Varselfeil avbryter aldri lagring.
++- **Status (skrivebeskyttet):** `GET /api/v1/inbox-status` (bot-nøkkel med `leads:read`): antall ubehandlede (INNKOMMENDE), eldste alder (min og arbeidstimer man–fre 08–17 Oslo, helligdager ikke trukket fra), kilde-kategori/id/tidspunkt per henvendelse. Ingen personopplysninger.
++- **Lagringstid 12 mnd:** `GET|POST /api/cron/inbound-retention` (`CRON_SECRET`). **Tørrkjøring som standard.** Sletting krever både `INBOUND_RETENTION_APPLY=1` og `?apply=1`. Rører kun firma med nettside/e-post-aktivitet, uten VUNNET deal, uten aktivitet siste 12 mnd. Ikke lagt i `vercel.json`. NB: eksisterende `gdprSweep` i `/api/cron/fase3` sletter allerede alle leads uten VUNNET deal etter 12 mnd (GDPR_MONTHS=12, patch 0004), i tråd med vedtak om 12 mnd for alle leads.
+diff --git a/src/app/api/cron/inbound-retention/route.ts b/src/app/api/cron/inbound-retention/route.ts
+new file mode 100644
+index 0000000..f55ce17
+--- /dev/null
++++ b/src/app/api/cron/inbound-retention/route.ts
+@@ -0,0 +1,18 @@
++import { NextRequest, NextResponse } from "next/server";
++import { requireCronAuth } from "@/lib/cron-auth";
++import { inboundRetention } from "@/lib/crm/inbound-retention";
++
++// 12 måneders lagringstid for innkommende henvendelser. TØRRKJØRING som standard (sletter ingenting).
++// Sletting krever BÅDE env INBOUND_RETENTION_APPLY=1 OG ?apply=1. Ingen e-post. Ikke lagt i vercel.json (kjøres manuelt til André har sagt ja).
++export const dynamic = "force-dynamic";
++
++async function run(request: NextRequest) {
++  const denied = requireCronAuth(request);
++  if (denied) return denied;
++  const apply = process.env.INBOUND_RETENTION_APPLY === "1" && request.nextUrl.searchParams.get("apply") === "1";
++  const r = await inboundRetention(new Date(), apply);
++  console.log("[cron/inbound-retention]", JSON.stringify({ dryRun: r.dryRun, candidates: r.candidates, deleted: r.deleted }));
++  return NextResponse.json({ ok: true, ...r });
++}
++export const GET = run;
++export const POST = run;
+diff --git a/src/app/api/v1/inbound/route.ts b/src/app/api/v1/inbound/route.ts
+index 56a1052..c0f9e5f 100644
+--- a/src/app/api/v1/inbound/route.ts
++++ b/src/app/api/v1/inbound/route.ts
+@@ -1,14 +1,17 @@
+ // POST /api/v1/inbound – innkommende henvendelser fra intellisenseai.no (/kontakt, «Be om tilbud», chat).
+ // Autentisering: HMAC-signatur (X-IS-Timestamp + X-IS-Signature) eller X-IS-Key, med INBOUND_WEBHOOK_SECRET.
+-// Leadet havner i «Innkommende» med neste steg i dag, slik at det vises på «I dag». Sender ingen e-post.
++// Leadet havner i «Innkommende» med neste steg i dag, slik at det vises på «I dag». Idempotent via ekstern_id.
++// Sender aldri e-post til innsender; varsel kun til eier bak INBOUND_NOTIFY_ENABLED=1.
+ import { db } from "@/lib/db";
+ import { verifyInbound } from "@/lib/crm/apikey";
+ import { normalizeOrgnr, isValidOrgnr, isGenericEmail, STAGE_LABEL, type Stage } from "@/lib/crm/core";
+ import { json, rateLimitDb, botAudit, createDealTx } from "@/lib/crm/botapi";
++import { isAutoSender } from "@/lib/crm/inbox-status";
++import { notifyOwnerNewInbound } from "@/lib/crm/inbound-notify";
+ 
+ export const dynamic = "force-dynamic";
+ 
+-const KILDER: Record<string, string> = { kontakt: "Kontaktskjema", tilbud: "Be om tilbud", chat: "Chat", ghl: "Kontaktskjema (GHL)" };
++const KILDER: Record<string, string> = { kontakt: "Kontaktskjema", tilbud: "Be om tilbud", chat: "Chat", ghl: "Kontaktskjema (GHL)", epost: "E-post (hei@)" };
+ const str = (v: unknown, max = 500) => (typeof v === "string" ? v.trim().slice(0, max) || null : null);
+ 
+ export async function POST(req: Request) {
+@@ -17,10 +20,12 @@ export async function POST(req: Request) {
+   const v = verifyInbound(process.env.INBOUND_WEBHOOK_SECRET, req.headers, body);
+   if (!v.ok) return json({ error: v.reason }, 401);
+   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "ukjent";
+-  if (!(await rateLimitDb(`inbound:${ip}`, 30)).ok) return json({ error: "For mange forespørsler" }, 429);
+ 
+   let b: Record<string, unknown>;
+   try { b = JSON.parse(body); } catch { return json({ error: "Ugyldig JSON" }, 400); }
++  // Besøkerens IP (signert i body av nettsiden) brukes som rate-limit-nøkkel i stedet for Vercels IP. Lagres ikke ut over bøtta.
++  const klientIp = str(b.klient_ip, 64);
++  if (!(await rateLimitDb(`inbound:${klientIp || ip}`, 30)).ok) return json({ error: "For mange forespørsler" }, 429);
+   // GHL-webhooks sender gjerne full_name/email/phone/company_name
+   const navn = str(b.navn ?? b.name ?? b.full_name, 200);
+   const epost = str(b.epost ?? b.email, 200)?.toLowerCase() ?? null;
+@@ -32,9 +37,18 @@ export async function POST(req: Request) {
+   const side = str(b.side ?? b.page, 300);
+   const orgnrRaw = normalizeOrgnr(str(b.orgnr ?? b.org_nr, 20));
+   const orgnr = orgnrRaw && isValidOrgnr(orgnrRaw) ? orgnrRaw : null;
++  // Idempotens: ekstern_id (f.eks. Message-ID eller skjema-nøkkel) → CrmActivity.kilde «nettside/<kilde>#<id>». Ingen skjemaendring.
++  const eksternId = str(b.ekstern_id ?? b.external_id, 200);
++  const activityKilde = eksternId ? `nettside/${kildeKey}#${eksternId}` : `nettside/${kildeKey}`;
++  if (isAutoSender(epost, b.auto_submitted)) return json({ ok: true, ignored: true, reason: "auto-svar/no-reply" }, 200);
+   if (!navn && !epost && !telefon) return json({ error: "Mangler navn, e-post eller telefon" }, 400);
+   if (epost && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(epost)) return json({ error: "Ugyldig e-post" }, 400);
+ 
++  if (eksternId) {
++    const seen = await db.crmActivity.findFirst({ where: { kilde: activityKilde }, select: { companyId: true, dealId: true } });
++    if (seen) return json({ ok: true, created: false, duplicate: true, idempotent: true, crm_id: seen.companyId }, 200);
++  }
++
+   // Dedup: orgnr → kontakt med samme e-post → firma med samme generiske e-post
+   let company =
+     (orgnr && (await db.company.findUnique({ where: { orgnr } }))) ||
+@@ -47,6 +61,11 @@ export async function POST(req: Request) {
+     .filter(Boolean).join("\n");
+ 
+   const result = await db.$transaction(async (tx) => {
++    if (eksternId) { // serialiser samtidige forsøk med samme ekstern_id
++      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${activityKilde}))`;
++      const again = await tx.crmActivity.findFirst({ where: { kilde: activityKilde }, select: { companyId: true, dealId: true } });
++      if (again) return { companyId: again.companyId, dealId: again.dealId ?? "", stage: "INNKOMMENDE" as Stage, idempotent: true };
++    }
+     if (!company) {
+       company = await tx.company.create({
+         data: {
+@@ -69,10 +88,13 @@ export async function POST(req: Request) {
+       const d = await createDealTx(tx, company.id, company.navn, "INNKOMMENDE", { kilde: "NETTSIDE", bot: "nettside", tittel: `${kilde}: ${firma || navn || epost}`, nesteSteg: `Svar på henvendelsen (${kilde})`, nesteStegDato: new Date() });
+       dealId = d.id;
+     }
+-    await tx.crmActivity.create({ data: { companyId: company.id, dealId, type: "EPOST", tekst, kilde: `nettside/${kildeKey}` } });
++    await tx.crmActivity.create({ data: { companyId: company.id, dealId, type: "EPOST", tekst, kilde: activityKilde } });
+     const stage = (await tx.deal.findUniqueOrThrow({ where: { id: dealId } })).stage as Stage;
+-    return { companyId: company.id, dealId, stage };
++    return { companyId: company.id, dealId, stage, idempotent: false };
+   });
++  if (result.idempotent) return json({ ok: true, created: false, duplicate: true, idempotent: true, crm_id: result.companyId }, 200);
+   await botAudit("nettside", duplicate ? "inbound_existing" : "inbound_created", "company", result.companyId, { kilde: kildeKey, auth: v.method });
++  // Varsel til eier (AV uten INBOUND_NOTIFY_ENABLED=1; låst til eier-adresser; feil svelges)
++  await notifyOwnerNewInbound({ kilde, navn: navn || epost, side, utdrag: melding, dealId: result.dealId, duplicate });
+   return json({ ok: true, created: !duplicate, duplicate, crm_id: result.companyId, status: STAGE_LABEL[result.stage] }, duplicate ? 200 : 201);
+ }
+diff --git a/src/app/api/v1/inbox-status/route.ts b/src/app/api/v1/inbox-status/route.ts
+new file mode 100644
+index 0000000..707f941
+--- /dev/null
++++ b/src/app/api/v1/inbox-status/route.ts
+@@ -0,0 +1,35 @@
++// GET /api/v1/inbox-status – skrivebeskyttet status for ubehandlede henvendelser (stage INNKOMMENDE).
++// Krever bot-nøkkel med leads:read. Ingen personopplysninger: kun id, kilde-kategori, tidspunkt og alder. Sender ingen e-post.
++import { db } from "@/lib/db";
++import { authBot, json } from "@/lib/crm/botapi";
++import { kildeKategori, workMinutesBetween } from "@/lib/crm/inbox-status";
++
++export const dynamic = "force-dynamic";
++
++export async function GET(req: Request) {
++  const bot = await authBot(req, "leads:read");
++  if (bot instanceof Response) return bot;
++  const now = new Date();
++  const deals = await db.deal.findMany({
++    where: { stage: "INNKOMMENDE" },
++    orderBy: { createdAt: "asc" }, take: 200,
++    select: { id: true, createdAt: true, activities: { where: { kilde: { startsWith: "nettside/" } }, orderBy: { createdAt: "asc" }, take: 1, select: { kilde: true } } },
++  });
++  const items = deals.map((d) => ({
++    id: d.id,
++    kilde: kildeKategori(d.activities[0]?.kilde),
++    opprettet: d.createdAt.toISOString(),
++    alder_minutter: Math.max(0, Math.round((now.getTime() - d.createdAt.getTime()) / 60_000)),
++    alder_arbeidstimer: Math.round((workMinutesBetween(d.createdAt, now) / 60) * 10) / 10,
++  }));
++  const eldste = items[0];
++  return json({
++    naa: now.toISOString(),
++    antall_ubehandlede: items.length,
++    eldste_alder_minutter: eldste?.alder_minutter ?? 0,
++    eldste_alder_arbeidstimer: eldste?.alder_arbeidstimer ?? 0,
++    arbeidstid: "man–fre 08:00–17:00 Europe/Oslo (helligdager ikke trukket fra)",
++    per_kilde: items.reduce<Record<string, number>>((a, i) => ((a[i.kilde] = (a[i.kilde] || 0) + 1), a), {}),
++    henvendelser: items,
++  });
++}
+diff --git a/src/lib/crm/email-guard.test.ts b/src/lib/crm/email-guard.test.ts
+index 7546d22..40614ec 100644
+--- a/src/lib/crm/email-guard.test.ts
++++ b/src/lib/crm/email-guard.test.ts
+@@ -7,6 +7,7 @@ import { ownerAllowed } from "../email-guard";
+ test("interne varsler: bare eierens egne adresser", () => {
+   const owners = ["andreaalborg@intellisenseai.no", "andre@test.no"];
+   assert.ok(ownerAllowed(" AndreAalborg@IntelliSenseAI.no ", owners));
++  assert.ok(ownerAllowed("andre.aalborg@intellisenseai.no", [...owners, "andre.aalborg@intellisenseai.no"])); // legacy-alias i overgangen
+   assert.ok(!ownerAllowed("kunde@firma.no", owners));
+   assert.ok(!ownerAllowed("", owners));
+ });
+@@ -30,6 +31,7 @@ test("ingen andre kodeveier kaller Resend enn de godkjente", () => {
+     "src/app/api/invoices/[invoiceId]/send/route.ts", // admin-klikk «Send faktura»
+     "src/lib/portal/actions.ts", // magisk lenke til brukeren selv (som glemt passord)
+     "src/lib/portal/notify.ts", // kun kundens egne brukere med varsel PÅ, sperret til Resend er verifisert
++    "src/lib/crm/inbound-notify.ts", // varsel til eier ved ny henvendelse: AV uten INBOUND_NOTIFY_ENABLED=1, mottaker låst til eier-adresser, dry-run respektert
+   ]);
+   const walk = (d: string): string[] => readdirSync(d).flatMap((n) => { const p = join(d, n); return statSync(p).isDirectory() ? walk(p) : [p]; });
+   const hits = walk("src").filter((f) => /\.(ts|tsx)$/.test(f) && !f.endsWith(".test.ts"))
+diff --git a/src/lib/crm/inbound-notify.ts b/src/lib/crm/inbound-notify.ts
+new file mode 100644
+index 0000000..bf883df
+--- /dev/null
++++ b/src/lib/crm/inbound-notify.ts
+@@ -0,0 +1,50 @@
++// Varsel til EIER ved ny innkommende henvendelse. AV uten INBOUND_NOTIFY_ENABLED=1.
++// Mottaker låses via email-guard (kun eierens adresser) – aldri innsender. Feil svelges (lagring avbrytes aldri).
++import { ownerAllowed } from "@/lib/email-guard";
++import { db } from "@/lib/db";
++import { appBaseUrl } from "@/lib/base-url";
++import { isDryRun, emailHealth } from "./mailer";
++
++export const NOTIFY_REPLY_TO = "andreaalborg@intellisenseai.no";
++
++export function notifyEnabled() { return process.env.INBOUND_NOTIFY_ENABLED === "1"; }
++
++/** Mottakere: OWNER_NOTIFY_EMAILS (ellers standardadressen), filtrert gjennom eier-vakten. */
++export async function notifyRecipients(): Promise<string[]> {
++  // Autoritet = standardadressen + SUPER_ADMIN i DB (ikke env): OWNER_NOTIFY_EMAILS kan bare velge ut blant disse, aldri legge til nye.
++  const admins = (await db.user.findMany({ where: { role: "SUPER_ADMIN" }, select: { email: true } })).map((u) => u.email ?? "");
++  const owners = [NOTIFY_REPLY_TO, ...admins].filter(Boolean);
++  const wanted = (process.env.OWNER_NOTIFY_EMAILS || NOTIFY_REPLY_TO).split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
++  return [...new Set(wanted)].filter((e) => ownerAllowed(e, owners));
++}
++
++export function buildNotify(p: { kilde: string; navn: string | null; side: string | null; utdrag: string | null; dealId: string; duplicate: boolean }) {
++  const base = appBaseUrl();
++  const utdrag = (p.utdrag || "").replace(/\s+/g, " ").slice(0, 200);
++  return {
++    subject: `Ny henvendelse: ${p.kilde}${p.navn ? ` – ${p.navn}` : ""}`.slice(0, 150),
++    text: [
++      `Ny henvendelse i CRM (${p.kilde}${p.duplicate ? ", kjent kunde" : ""}).`,
++      p.navn ? `Fra: ${p.navn}` : "", p.side ? `Side/emne: ${p.side}` : "", utdrag ? `Utdrag: ${utdrag}` : "",
++      "", `Åpne: ${base}/dashboard/crm`, "", "Intern varsling. Svar sendes manuelt fra din egen e-post.",
++    ].filter((x, k, a) => x !== "" || (a[k - 1] !== "" && k > 0)).join("\n"),
++  };
++}
++
++export async function notifyOwnerNewInbound(p: Parameters<typeof buildNotify>[0]): Promise<{ sent: boolean; reason?: string }> {
++  try {
++    if (!notifyEnabled()) return { sent: false, reason: "flagg av" };
++    const to = await notifyRecipients();
++    if (!to.length) return { sent: false, reason: "ingen eier-mottaker" };
++    const m = buildNotify(p);
++    if (isDryRun()) { console.log("[inbound-notify] dry-run", to.length); return { sent: false, reason: "dry-run" }; }
++    const h = await emailHealth();
++    if (!h.ok) { console.warn("[inbound-notify] sending sperret:", h.reasons.join("; ")); return { sent: false, reason: "helsesjekk" }; }
++    const { sendEmail } = await import("@/lib/email");
++    const r = await sendEmail({ to, subject: m.subject, text: m.text, html: `<pre style="font-family:inherit;white-space:pre-wrap">${m.text.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!)}</pre>`, replyTo: NOTIFY_REPLY_TO });
++    return { sent: r.success, reason: r.error };
++  } catch (e) {
++    console.error("[inbound-notify] feilet", e instanceof Error ? e.message : e);
++    return { sent: false, reason: "feil" };
++  }
++}
+diff --git a/src/lib/crm/inbound-retention.ts b/src/lib/crm/inbound-retention.ts
+new file mode 100644
+index 0000000..b4bc579
+--- /dev/null
++++ b/src/lib/crm/inbound-retention.ts
+@@ -0,0 +1,26 @@
++// Lagringstid for innkommende henvendelser: 12 måneder etter siste aktivitet. Tørrkjøring er standard.
++// Rører kun firma som (a) har minst én aktivitet fra nettside/e-post-inngangen, (b) ikke har noen VUNNET deal (kunder følger regnskapsplikt),
++// og (c) ikke har noen aktivitet/deal-endring nyere enn grensen.
++import { db } from "@/lib/db";
++
++export const INBOUND_RETENTION_MONTHS = 12;
++
++export function retentionCutoff(now: Date, months = INBOUND_RETENTION_MONTHS): Date {
++  const d = new Date(now); d.setUTCMonth(d.getUTCMonth() - months); return d;
++}
++
++export async function inboundRetention(now = new Date(), apply = false) {
++  const cutoff = retentionCutoff(now);
++  const cands = await db.company.findMany({
++    where: {
++      activities: { some: { kilde: { startsWith: "nettside/" } } },
++      deals: { none: { stage: "VUNNET" } },
++      createdAt: { lt: cutoff },
++    },
++    select: { id: true, createdAt: true, activities: { select: { createdAt: true }, orderBy: { createdAt: "desc" }, take: 1 }, deals: { select: { updatedAt: true }, orderBy: { updatedAt: "desc" }, take: 1 } },
++  });
++  const due = cands.filter((c) => Math.max(c.createdAt.getTime(), c.activities[0]?.createdAt.getTime() ?? 0, c.deals[0]?.updatedAt.getTime() ?? 0) < cutoff.getTime()).map((c) => c.id);
++  let deleted = 0;
++  if (apply && due.length) deleted = (await db.company.deleteMany({ where: { id: { in: due } } })).count;
++  return { dryRun: !apply, cutoff: cutoff.toISOString(), candidates: due.length, deleted, ids: due.slice(0, 50) };
++}
+diff --git a/src/lib/crm/inbound.test.ts b/src/lib/crm/inbound.test.ts
+new file mode 100644
+index 0000000..9e1d1e1
+--- /dev/null
++++ b/src/lib/crm/inbound.test.ts
+@@ -0,0 +1,117 @@
++// Tester for henvendelses-flyten: rene funksjoner + integrasjon mot LOKAL engangs-Postgres (hoppes over ellers).
++// Verifiserer: idempotens, auto-svar filtrert, kilde-merking, varsel låst til eier og bak flagg, ingen utgående HTTP, inbox-status, retention (tørrkjøring).
++import { test, after } from "node:test";
++import assert from "node:assert/strict";
++import { workMinutesBetween, kildeKategori, isAutoSender } from "./inbox-status";
++import { signBody, hashApiKey } from "./apikey";
++
++const local = /localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL || "") && !process.env.NEON_DATABASE_URL;
++const SECRET = "test-secret-0123456789abcdef";
++const T = "TESTINBOUND";
++
++test("arbeidstid Oslo: man–fre 08–17, helg og natt teller ikke", () => {
++  // fre 16.10.2026 15:00 Oslo (13:00Z) → man 19.10 09:00 Oslo (07:00Z): 2t fre + 1t man = 180 min
++  assert.equal(workMinutesBetween(new Date("2026-10-16T13:00:00Z"), new Date("2026-10-19T07:00:00Z")), 180);
++  assert.equal(workMinutesBetween(new Date("2026-10-17T08:00:00Z"), new Date("2026-10-18T20:00:00Z")), 0);
++  assert.equal(workMinutesBetween(new Date("2026-10-14T05:00:00Z"), new Date("2026-10-14T15:30:00Z")), 9 * 60); // ons 07–17:30 Oslo → 08–17
++  assert.equal(workMinutesBetween(new Date("2026-10-16T10:00:00Z"), new Date("2026-10-16T09:00:00Z")), 0);
++  // sommertid→vintertid (25.10.2026): søn → ingen effekt, men man 26.10 08–10 Oslo (vintertid, UTC+1)
++  assert.equal(workMinutesBetween(new Date("2026-10-26T06:00:00Z"), new Date("2026-10-26T09:00:00Z")), 120);
++});
++test("kilde-kategori og auto-svar", () => {
++  assert.equal(kildeKategori("nettside/kontakt"), "skjema");
++  assert.equal(kildeKategori("nettside/epost#<abc@x>"), "epost_hei");
++  assert.equal(kildeKategori("nettside/chat"), "chat");
++  assert.equal(kildeKategori(null), "annet");
++  assert.ok(isAutoSender("noreply@x.no")); assert.ok(isAutoSender("a@b.no", "auto-replied")); assert.ok(!isAutoSender("a@b.no", "no")); assert.ok(!isAutoSender("ola@b.no"));
++});
++
++test("inbound + inbox-status + retention (lokal DB)", { skip: !local && "DATABASE_URL er ikke lokal" }, async (t) => {
++  const calls: string[] = [];
++  const realFetch = globalThis.fetch;
++  globalThis.fetch = (async (u: string | URL | Request, i?: RequestInit) => { calls.push(String(u)); return realFetch(u, i); }) as typeof fetch;
++  process.env.INBOUND_WEBHOOK_SECRET = SECRET;
++  process.env.RESEND_API_KEY = "re_dummy"; process.env.EMAIL_FROM = "André <andreaalborg@intellisenseai.no>";
++  const { db } = await import("@/lib/db");
++  const inbound = await import("@/app/api/v1/inbound/route");
++  const status = await import("@/app/api/v1/inbox-status/route");
++  const { notifyRecipients, notifyOwnerNewInbound } = await import("./inbound-notify");
++  const { inboundRetention } = await import("./inbound-retention");
++  const cleanup = async () => { await db.company.deleteMany({ where: { OR: [{ navn: { startsWith: T } }, { generiskEpost: { endsWith: "@inbound-test.invalid" } }, { contacts: { some: { epost: { endsWith: "@inbound-test.invalid" } } } }] } }); await db.botApiKey.deleteMany({ where: { navn: T } }); };
++  after(async () => { await cleanup(); globalThis.fetch = realFetch; await db.$disconnect(); });
++  await cleanup();
++  const post = (b: object, headers: Record<string, string> = {}) => {
++    const body = JSON.stringify(b); const ts = String(Math.floor(Date.now() / 1000));
++    return inbound.POST(new Request("http://x/api/v1/inbound", { method: "POST", body, headers: { "x-is-timestamp": ts, "x-is-signature": "sha256=" + signBody(SECRET, ts, body), ...headers } }));
++  };
++
++  await t.test("idempotens: samme ekstern_id gir ingen duplikat", async () => {
++    const b = { kilde: "epost", navn: `${T} Ola`, epost: "ola@inbound-test.invalid", melding: "Hei", side: "e-post: Test", ekstern_id: "<msg-1@test>" };
++    const r1 = await post(b); assert.equal(r1.status, 201);
++    const r2 = await post(b); assert.equal(r2.status, 200); assert.equal((await r2.json()).idempotent, true);
++    const [r3, r4] = await Promise.all([post({ ...b, ekstern_id: "<msg-2@test>" }), post({ ...b, ekstern_id: "<msg-2@test>" })]);
++    assert.equal([await r3.json(), await r4.json()].filter((x) => x.idempotent).length, 1, "nøyaktig én av to samtidige er idempotent-treff");
++    const acts = await db.crmActivity.findMany({ where: { kilde: { startsWith: "nettside/epost#" }, company: { contacts: { some: { epost: "ola@inbound-test.invalid" } } } } });
++    assert.equal(acts.length, 2, "to unike meldinger, ingen duplikater");
++    assert.equal(await db.deal.count({ where: { company: { contacts: { some: { epost: "ola@inbound-test.invalid" } } } } }), 1);
++  });
++  await t.test("kilde-merking og auto-svar", async () => {
++    const d = await db.deal.findFirstOrThrow({ where: { company: { contacts: { some: { epost: "ola@inbound-test.invalid" } } } } });
++    assert.match(d.tittel, /^E-post \(hei@\)/); assert.equal(d.stage, "INNKOMMENDE");
++    const r = await post({ kilde: "epost", navn: "Robot", epost: "noreply@inbound-test.invalid", melding: "x", ekstern_id: "<auto>" });
++    assert.equal((await r.json()).ignored, true);
++    assert.equal(await db.contact.count({ where: { epost: "noreply@inbound-test.invalid" } }), 0);
++    const bad = await inbound.POST(new Request("http://x", { method: "POST", body: "{}", headers: { "x-is-key": "feil-feil-feil-feil-feil" } })); assert.equal(bad.status, 401);
++  });
++  await t.test("varsel: av som standard, låst til eier, ingen utgående HTTP", async () => {
++    delete process.env.INBOUND_NOTIFY_ENABLED;
++    assert.equal((await notifyOwnerNewInbound({ kilde: "x", navn: null, side: null, utdrag: null, dealId: "d", duplicate: false })).reason, "flagg av");
++    process.env.OWNER_NOTIFY_EMAILS = "kunde@ekstern.no, andreaalborg@intellisenseai.no";
++    const rec = await notifyRecipients();
++    assert.deepEqual(rec, ["andreaalborg@intellisenseai.no"], "ekstern adresse filtreres bort av email-guard");
++    process.env.INBOUND_NOTIFY_ENABLED = "1"; process.env.OUTREACH_DRY_RUN = "1";
++    assert.equal((await notifyOwnerNewInbound({ kilde: "x", navn: null, side: null, utdrag: null, dealId: "d", duplicate: false })).reason, "dry-run");
++    await post({ kilde: "kontakt", navn: `${T} Kari`, epost: "kari@inbound-test.invalid", melding: "Hei", ekstern_id: "k1" });
++    assert.equal(calls.filter((u) => /resend|api\./i.test(u)).length, 0, "ingen utgående kall (dry-run)");
++    delete process.env.OUTREACH_DRY_RUN; delete process.env.INBOUND_NOTIFY_ENABLED;
++    // flagg på, ikke dry-run, men dummy-nøkkel → helsesjekk stopper (ingen kall)
++    process.env.INBOUND_NOTIFY_ENABLED = "1";
++    assert.equal((await notifyOwnerNewInbound({ kilde: "x", navn: null, side: null, utdrag: null, dealId: "d", duplicate: false })).reason, "helsesjekk");
++    assert.equal(calls.length, 0);
++    delete process.env.INBOUND_NOTIFY_ENABLED;
++  });
++  await t.test("inbox-status: krever leads:read, ingen persondata", async () => {
++    const key = "isk_testkey_" + "a".repeat(30);
++    await db.botApiKey.create({ data: { navn: T, prefix: "isk_test", hash: hashApiKey(key), scopes: ["leads:read"] } });
++    assert.equal((await status.GET(new Request("http://x"))).status, 401);
++    const r = await status.GET(new Request("http://x", { headers: { authorization: `Bearer ${key}` } }));
++    assert.equal(r.status, 200);
++    const j = await r.json();
++    assert.ok(j.antall_ubehandlede >= 2, JSON.stringify(j.per_kilde)); assert.ok(j.per_kilde.epost_hei >= 1, JSON.stringify(j.per_kilde)); assert.ok(j.per_kilde.skjema >= 1, JSON.stringify(j.per_kilde));
++    assert.deepEqual(Object.keys(j.henvendelser[0]).sort(), ["alder_arbeidstimer", "alder_minutter", "id", "kilde", "opprettet"]);
++    assert.doesNotMatch(JSON.stringify(j), /inbound-test|Ola|Kari/);
++    await db.botApiKey.update({ where: { navn: T }, data: { scopes: ["leads:write"] } });
++    assert.equal((await status.GET(new Request("http://x", { headers: { authorization: `Bearer ${key}` } }))).status, 403);
++  });
++  await t.test("retention: tørrkjøring standard, sletter kun eldre enn 12 mnd uten VUNNET", async () => {
++    const old = new Date(Date.now() - 400 * 86400_000);
++    const mk = async (n: string, stage: "INNKOMMENDE" | "VUNNET") => {
++      const c = await db.company.create({ data: { navn: `${T} ${n}`, deals: { create: { tittel: "x", stage } } } });
++      await db.crmActivity.create({ data: { companyId: c.id, type: "EPOST", tekst: "x", kilde: "nettside/kontakt" } });
++      await db.$executeRaw`UPDATE "Company" SET "createdAt"=${old} WHERE id=${c.id}`;
++      await db.$executeRaw`UPDATE "CrmActivity" SET "createdAt"=${old} WHERE "companyId"=${c.id}`;
++      await db.$executeRaw`UPDATE "Deal" SET "updatedAt"=${old} WHERE "companyId"=${c.id}`;
++      return c.id;
++    };
++    const a = await mk("gammel", "INNKOMMENDE"), w = await mk("kunde", "VUNNET");
++    const dry = await inboundRetention(new Date(), false);
++    assert.ok(dry.dryRun && dry.ids.includes(a) && !dry.ids.includes(w)); assert.equal(dry.deleted, 0);
++    assert.ok(await db.company.findUnique({ where: { id: a } }));
++    const del = await inboundRetention(new Date(), true);
++    assert.ok(del.deleted >= 1); assert.equal(await db.company.findUnique({ where: { id: a } }), null); assert.ok(await db.company.findUnique({ where: { id: w } }));
++    // cron-rute: uten secret → 401
++    const { GET } = await import("@/app/api/cron/inbound-retention/route");
++    const { NextRequest } = await import("next/server");
++    assert.equal((await GET(new NextRequest("http://x/api/cron/inbound-retention"))).status, 401);
++  });
++});
+diff --git a/src/lib/crm/inbox-status.ts b/src/lib/crm/inbox-status.ts
+new file mode 100644
+index 0000000..0ccf8bb
+--- /dev/null
++++ b/src/lib/crm/inbox-status.ts
+@@ -0,0 +1,52 @@
++// Ren logikk (ingen DB): arbeidstid i Europe/Oslo og kilde-kategori for «Innkommende». Testes i inbound.test.ts.
++export const WORK_START_H = 8;
++export const WORK_END_H = 17; // man–fre 08:00–17:00 Oslo (helligdager ikke trukket fra)
++
++const fmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Oslo", hour12: false, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
++function osloParts(d: Date) {
++  const p = Object.fromEntries(fmt.formatToParts(d).map((x) => [x.type, x.value]));
++  return { y: +p.year, m: +p.month, d: +p.day, h: +p.hour % 24, min: +p.minute, s: +p.second };
++}
++/** Oslo-lokal tid → UTC-ms. */
++function osloToUtc(y: number, m: number, d: number, h: number): number {
++  const guess = Date.UTC(y, m - 1, d, h);
++  const o = osloParts(new Date(guess));
++  const asUtc = Date.UTC(o.y, o.m - 1, o.d, o.h, o.min, o.s);
++  const off = asUtc - guess;
++  return guess - off;
++}
++/** Antall arbeidsminutter (man–fre 08–17 Oslo) mellom to tidspunkt. */
++export function workMinutesBetween(from: Date, to: Date): number {
++  if (to <= from) return 0;
++  let total = 0;
++  const s = osloParts(from);
++  let day = Date.UTC(s.y, s.m - 1, s.d, 12); // kalenderdag (kun datoen brukes)
++  const endDay = (() => { const e = osloParts(to); return Date.UTC(e.y, e.m - 1, e.d, 12); })();
++  for (; day <= endDay; day += 86_400_000) {
++    const c = new Date(day);
++    const dow = c.getUTCDay();
++    if (dow === 0 || dow === 6) continue;
++    const ws = osloToUtc(c.getUTCFullYear(), c.getUTCMonth() + 1, c.getUTCDate(), WORK_START_H);
++    const we = osloToUtc(c.getUTCFullYear(), c.getUTCMonth() + 1, c.getUTCDate(), WORK_END_H);
++    const a = Math.max(ws, from.getTime()), b = Math.min(we, to.getTime());
++    if (b > a) total += (b - a) / 60_000;
++  }
++  return Math.round(total);
++}
++
++export type KildeKategori = "skjema" | "epost_hei" | "chat" | "annet";
++/** CrmActivity.kilde («nettside/kontakt», «nettside/epost#id», …) → kategori. */
++export function kildeKategori(kilde: string | null | undefined): KildeKategori {
++  const k = (kilde || "").toLowerCase().replace(/^nettside\//, "").split("#")[0];
++  if (k === "kontakt" || k === "tilbud" || k === "ghl") return "skjema";
++  if (k === "epost") return "epost_hei";
++  if (k === "chat") return "chat";
++  return "annet";
++}
++
++/** Auto-svar/no-reply skal ikke bli leads. */
++export function isAutoSender(epost: string | null, autoSubmitted?: unknown): boolean {
++  if (typeof autoSubmitted === "string" && autoSubmitted && autoSubmitted.toLowerCase() !== "no") return true;
++  if (!epost) return false;
++  return /^(no-?reply|do-?not-?reply|mailer-daemon|postmaster)@/i.test(epost);
++}
+diff --git a/src/lib/crm/outreach-core.test.ts b/src/lib/crm/outreach-core.test.ts
+index e783776..93d0faf 100644
+--- a/src/lib/crm/outreach-core.test.ts
++++ b/src/lib/crm/outreach-core.test.ts
+@@ -72,9 +72,9 @@ test("svar/stage-endring og avmelding stopper ventende utkast", () => {
+ });
+ test("helsesjekk: Send er av til EMAIL_FROM er verifisert intellisenseai.no", () => {
+   assert.equal(healthFromParts({ emailFrom: "noreply@kundedata.no", apiKey: true, domainStatus: null }).ok, false);
+-  assert.equal(healthFromParts({ emailFrom: "André <andre@intellisenseai.no>", apiKey: true, domainStatus: "pending" }).ok, false);
+-  assert.equal(healthFromParts({ emailFrom: "André <andre@intellisenseai.no>", apiKey: false, domainStatus: null }).ok, false);
+-  assert.equal(healthFromParts({ emailFrom: "André <andre@intellisenseai.no>", apiKey: true, domainStatus: "verified" }).ok, true);
++  assert.equal(healthFromParts({ emailFrom: "André <andreaalborg@intellisenseai.no>", apiKey: true, domainStatus: "pending" }).ok, false);
++  assert.equal(healthFromParts({ emailFrom: "André <andreaalborg@intellisenseai.no>", apiKey: false, domainStatus: null }).ok, false);
++  assert.equal(healthFromParts({ emailFrom: "André <andreaalborg@intellisenseai.no>", apiKey: true, domainStatus: "verified" }).ok, true);
+ });
+ test("cron-veien kan ikke sende: cron-ruten og outreach.ts importerer verken mailer, Resend eller @/lib/email", () => {
+   for (const f of ["src/app/api/cron/fase3/route.ts", "src/lib/crm/outreach.ts", "src/lib/crm/outreach-core.ts", "src/lib/crm/maler.ts"]) {
+diff --git a/src/lib/crm/outreach-core.ts b/src/lib/crm/outreach-core.ts
+index 0447b2a..72fbce7 100644
+--- a/src/lib/crm/outreach-core.ts
++++ b/src/lib/crm/outreach-core.ts
+@@ -7,7 +7,7 @@ export const SEQ_DAYS = [0, 4, 10] as const;
+ export const PAUSE_AFTER_LAST_DAYS = 7;
+ export const PAUSE_DAYS = 90;
+ export const WEEKLY_CAP = 20;
+-export const GDPR_MONTHS = 6;
++export const GDPR_MONTHS = 12;
+ /** Stages der sekvensen er aktiv. Alt annet (Svart, Møte, Tapt, Pause …) stopper den. */
+ export const SEQ_ACTIVE_STAGES = ["GODKJENT", "KONTAKTET"] as const;
+ export const STEG_LABEL = ["Dag 0", "Dag 4", "Dag 10"] as const;
+@@ -72,7 +72,7 @@ export function footer(unsubUrl: string, kilde: string): string {
+     "André Aalborg, IntelliSense (intellisenseai.no) · +47 467 44 670",
+     "",
+     "Dette er en markedsføringshenvendelse til virksomhetens generelle e-postadresse.",
+-    `Hvorfor du får denne: vi fant ${kilde}. Vi behandler kun firmaopplysninger (berettiget interesse) og sletter dem etter 6 måneder uten kontakt. Personvern: https://intellisenseai.no/personvern`,
++    `Hvorfor du får denne: vi fant ${kilde}. Vi behandler kun firmaopplysninger (berettiget interesse) og sletter dem etter 12 måneder uten kontakt. Personvern: https://intellisenseai.no/personvern`,
+     `Ikke interessert? Meld av med ett klikk: ${unsubUrl}`,
+   ].join("\n");
+ }
+diff --git a/src/lib/crm/outreach-db.test.ts b/src/lib/crm/outreach-db.test.ts
+index e1c738a..31893f2 100644
+--- a/src/lib/crm/outreach-db.test.ts
++++ b/src/lib/crm/outreach-db.test.ts
+@@ -1,5 +1,5 @@
+ // Integrasjonstest mot LOKAL Postgres (hoppes over ellers). Verifiserer at cron aldri kaller Resend,
+-// avmeldingsflyten, GDPR-sletting etter 6 mnd + 1 dag og at ENK/personlige adresser ikke får utkast.
++// avmeldingsflyten, GDPR-sletting etter 12 mnd + 1 dag (11 mnd overlever) og at ENK/personlige adresser ikke får utkast.
+ import { test, after } from "node:test";
+ import assert from "node:assert/strict";
+ 
+@@ -47,13 +47,18 @@ test("DB-integrasjon (lokal)", { skip: !local && "DATABASE_URL er ikke lokal" },
+     assert.equal((await unsubscribeByToken(d.token)).ok, true, "idempotent");
+   });
+ 
+-  await t.test("GDPR: lead med siste aktivitet for 6 mnd + 1 dag siden slettes; sperrelisten beholdes", async () => {
+-    const old = new Date(); old.setMonth(old.getMonth() - 6); old.setDate(old.getDate() - 1);
++  await t.test("GDPR: lead med siste aktivitet for 12 mnd + 1 dag siden slettes; sperrelisten beholdes", async () => {
++    const old = new Date(); old.setMonth(old.getMonth() - 12); old.setDate(old.getDate() - 1);
+     const c = await db.company.create({ data: { navn: `${T} Gammel AS`, orgnr: "990000004", createdAt: old, deals: { create: { tittel: "x", stage: "PAUSE" } } } });
+     await db.$executeRaw`UPDATE "Deal" SET "updatedAt" = ${old} WHERE "companyId" = ${c.id}`;
+     const fresh = await db.company.create({ data: { navn: `${T} Fersk AS`, orgnr: "990000005" } });
++    const elleve = new Date(); elleve.setMonth(elleve.getMonth() - 11);
++    const c11 = await db.company.create({ data: { navn: `${T} Elleve AS`, orgnr: "990000006", createdAt: elleve, deals: { create: { tittel: "y", stage: "PAUSE" } } } });
++    await db.$executeRaw`UPDATE "Deal" SET "updatedAt" = ${elleve} WHERE "companyId" = ${c11.id}`;
+     const r = await gdprSweep(new Date());
+     assert.ok(r.ids.includes(c.id));
++    assert.ok(!r.ids.includes(c11.id), "11 mnd gammel lead beholdes (12 mnd gjelder)");
++    assert.equal(await db.company.count({ where: { id: c11.id } }), 1);
+     assert.equal(await db.company.count({ where: { id: c.id } }), 0);
+     assert.equal(await db.company.count({ where: { id: fresh.id } }), 1);
+     assert.ok((await db.company.findUnique({ where: { id: fresh.id } }))!.slettesDato! > new Date());
+diff --git a/src/lib/crm/outreach.ts b/src/lib/crm/outreach.ts
+index b57cead..3a539ba 100644
+--- a/src/lib/crm/outreach.ts
++++ b/src/lib/crm/outreach.ts
+@@ -56,7 +56,7 @@ export async function planOutreach(now = new Date()) {
+   return res;
+ }
+ 
+-/** GDPR: slettesDato = siste aktivitet + 6 mnd. Leads uten vunnet deal slettes når datoen er passert. Sperrelisten beholdes. */
++/** GDPR: slettesDato = siste aktivitet + 12 mnd (GDPR_MONTHS). Leads uten vunnet deal slettes når datoen er passert. Sperrelisten beholdes. */
+ export async function gdprSweep(now = new Date()) {
+   // Rå SQL så Company.updatedAt ikke endres (ellers ville sjekken flytte seg selv fremover).
+   await db.$executeRaw`
+diff --git a/src/lib/email-guard.ts b/src/lib/email-guard.ts
+index 707b90f..ef516c6 100644
+--- a/src/lib/email-guard.ts
++++ b/src/lib/email-guard.ts
+@@ -1,9 +1,10 @@
+ // André-regelen: ingen e-post sendes automatisk til andre enn André selv.
+ // Gamle automasjoner (skjema-automasjoner og process-jobs-cron) får bare sende INTERNE varsler til eierens egne adresser.
+-import { db } from "@/lib/db";
+ 
+ export const AUTO_EMAIL_DISABLED_MSG = "Automatisk utsending er slått av – e-post til andre krever Andrés godkjenning (fase 3-regelen)";
+ const DEFAULT_OWNER = ["andreaalborg@intellisenseai.no"];
++// Overgang: eldre adresse som fortsatt er SUPER_ADMIN-innlogging i prod-DB. Beholdes som eier-alias til DB-bruker er migrert og verifisert. Fjernes etterpå.
++const LEGACY_OWNER_ALIASES = ["andre.aalborg@intellisenseai.no"];
+ 
+ /** Ren funksjon (testes): er adressen en av eierens egne? */
+ export function ownerAllowed(email: string | null | undefined, owners: string[]): boolean {
+@@ -14,9 +15,10 @@ export function ownerAllowed(email: string | null | undefined, owners: string[])
+ 
+ /** Eierens adresser: OWNER_NOTIFY_EMAILS (komma) + standardadressen + e-posten til SUPER_ADMIN-brukere. */
+ export async function ownerEmails(): Promise<string[]> {
++  const { db } = await import("@/lib/db"); // lazy: ownerAllowed skal kunne testes uten DATABASE_URL
+   const env = (process.env.OWNER_NOTIFY_EMAILS || "").split(",");
+   const admins = (await db.user.findMany({ where: { role: "SUPER_ADMIN" }, select: { email: true } })).map((u) => u.email ?? "");
+-  return [...DEFAULT_OWNER, ...env, ...admins].filter(Boolean);
++  return [...DEFAULT_OWNER, ...LEGACY_OWNER_ALIASES, ...env, ...admins].filter(Boolean);
+ }
+ 
+ export async function isOwnerAddress(email: string | null | undefined): Promise<boolean> {
