@@ -72,9 +72,9 @@ test("svar/stage-endring og avmelding stopper ventende utkast", () => {
 });
 test("helsesjekk: Send er av til EMAIL_FROM er verifisert intellisenseai.no", () => {
   assert.equal(healthFromParts({ emailFrom: "noreply@kundedata.no", apiKey: true, domainStatus: null }).ok, false);
-  assert.equal(healthFromParts({ emailFrom: "André <andre@intellisenseai.no>", apiKey: true, domainStatus: "pending" }).ok, false);
-  assert.equal(healthFromParts({ emailFrom: "André <andre@intellisenseai.no>", apiKey: false, domainStatus: null }).ok, false);
-  assert.equal(healthFromParts({ emailFrom: "André <andre@intellisenseai.no>", apiKey: true, domainStatus: "verified" }).ok, true);
+  assert.equal(healthFromParts({ emailFrom: "André <andreaalborg@intellisenseai.no>", apiKey: true, domainStatus: "pending" }).ok, false);
+  assert.equal(healthFromParts({ emailFrom: "André <andreaalborg@intellisenseai.no>", apiKey: false, domainStatus: null }).ok, false);
+  assert.equal(healthFromParts({ emailFrom: "André <andreaalborg@intellisenseai.no>", apiKey: true, domainStatus: "verified" }).ok, true);
 });
 test("cron-veien kan ikke sende: cron-ruten og outreach.ts importerer verken mailer, Resend eller @/lib/email", () => {
   for (const f of ["src/app/api/cron/fase3/route.ts", "src/lib/crm/outreach.ts", "src/lib/crm/outreach-core.ts", "src/lib/crm/maler.ts"]) {

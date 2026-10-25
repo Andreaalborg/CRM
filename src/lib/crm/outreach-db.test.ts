@@ -1,5 +1,5 @@
 // Integrasjonstest mot LOKAL Postgres (hoppes over ellers). Verifiserer at cron aldri kaller Resend,
-// avmeldingsflyten, GDPR-sletting etter 6 mnd + 1 dag og at ENK/personlige adresser ikke får utkast.
+// avmeldingsflyten, GDPR-sletting etter 12 mnd + 1 dag (11 mnd overlever) og at ENK/personlige adresser ikke får utkast.
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 
@@ -47,13 +47,18 @@ test("DB-integrasjon (lokal)", { skip: !local && "DATABASE_URL er ikke lokal" },
     assert.equal((await unsubscribeByToken(d.token)).ok, true, "idempotent");
   });
 
-  await t.test("GDPR: lead med siste aktivitet for 6 mnd + 1 dag siden slettes; sperrelisten beholdes", async () => {
-    const old = new Date(); old.setMonth(old.getMonth() - 6); old.setDate(old.getDate() - 1);
+  await t.test("GDPR: lead med siste aktivitet for 12 mnd + 1 dag siden slettes; sperrelisten beholdes", async () => {
+    const old = new Date(); old.setMonth(old.getMonth() - 12); old.setDate(old.getDate() - 1);
     const c = await db.company.create({ data: { navn: `${T} Gammel AS`, orgnr: "990000004", createdAt: old, deals: { create: { tittel: "x", stage: "PAUSE" } } } });
     await db.$executeRaw`UPDATE "Deal" SET "updatedAt" = ${old} WHERE "companyId" = ${c.id}`;
     const fresh = await db.company.create({ data: { navn: `${T} Fersk AS`, orgnr: "990000005" } });
+    const elleve = new Date(); elleve.setMonth(elleve.getMonth() - 11);
+    const c11 = await db.company.create({ data: { navn: `${T} Elleve AS`, orgnr: "990000006", createdAt: elleve, deals: { create: { tittel: "y", stage: "PAUSE" } } } });
+    await db.$executeRaw`UPDATE "Deal" SET "updatedAt" = ${elleve} WHERE "companyId" = ${c11.id}`;
     const r = await gdprSweep(new Date());
     assert.ok(r.ids.includes(c.id));
+    assert.ok(!r.ids.includes(c11.id), "11 mnd gammel lead beholdes (12 mnd gjelder)");
+    assert.equal(await db.company.count({ where: { id: c11.id } }), 1);
     assert.equal(await db.company.count({ where: { id: c.id } }), 0);
     assert.equal(await db.company.count({ where: { id: fresh.id } }), 1);
     assert.ok((await db.company.findUnique({ where: { id: fresh.id } }))!.slettesDato! > new Date());

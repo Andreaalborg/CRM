@@ -179,3 +179,6 @@ FOREIGN KEY ("recurringInvoiceId") REFERENCES "RecurringInvoice"("id") ON DELETE
 
 
 
+
+## Henvendelser: lagringstid og idempotens (16.10.2026)
+Ingen skjemaendring. Idempotens-nøkkelen ligger i `CrmActivity.kilde` (`nettside/<kilde>#<ekstern_id>`). Lagringstid for innkommende henvendelser: 12 måneder etter siste aktivitet (se `src/lib/crm/inbound-retention.ts`, cron-rute `inbound-retention`, tørrkjøring som standard).

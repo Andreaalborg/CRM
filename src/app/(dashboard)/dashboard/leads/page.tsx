@@ -21,9 +21,9 @@ interface SubmissionWithForm {
   form: { name: string; slug: string; fields: { name: string; label: string; type: string }[] };
 }
 
-async function getSubmissions(organizationId: string, isStaff: boolean): Promise<SubmissionWithForm[]> {
+async function getSubmissions(organizationId: string | null, isStaff: boolean): Promise<SubmissionWithForm[]> {
   const submissions = await db.submission.findMany({
-    where: isStaff ? {} : { organizationId },
+    where: isStaff || !organizationId ? {} : { organizationId },
     orderBy: { createdAt: "desc" },
     include: {
       organization: { select: { name: true } },
@@ -58,11 +58,11 @@ const statusLabels = {
 export default async function LeadsPage() {
   const session = await getServerSession(authOptions);
   
-  if (!session?.user?.organizationId) {
+  const isStaff = session?.user?.role === "SUPER_ADMIN";
+  if (!session?.user || (!session.user.organizationId && !isStaff)) {
     return null;
   }
 
-  const isStaff = session.user.role === "SUPER_ADMIN";
   const submissions = await getSubmissions(session.user.organizationId, isStaff);
 
   return (

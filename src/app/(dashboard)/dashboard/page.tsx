@@ -12,16 +12,18 @@ interface RecentSubmission {
   form: { name: string };
 }
 
-async function getDashboardData(organizationId: string) {
+async function getDashboardData(organizationId: string | null) {
+  // SUPER_ADMIN (ansatt) har ingen organisasjon: vis samlet oversikt (ingen org-filter).
+  const orgFilter = organizationId ? { organizationId } : {};
   const [formsCount, submissionsCount, recentSubmissionsData, automationsCount, emailsSent] = await Promise.all([
     db.form.count({
-      where: { organizationId },
+      where: orgFilter,
     }),
     db.submission.count({
-      where: { organizationId },
+      where: orgFilter,
     }),
     db.submission.findMany({
-      where: { organizationId },
+      where: orgFilter,
       orderBy: { createdAt: "desc" },
       take: 5,
       include: {
@@ -31,10 +33,10 @@ async function getDashboardData(organizationId: string) {
       },
     }),
     db.automation.count({
-      where: { organizationId },
+      where: orgFilter,
     }),
     db.emailLog.count({
-      where: { sentAt: { not: null }, submission: { organizationId } },
+      where: { sentAt: { not: null }, submission: orgFilter },
     }),
   ]);
 
@@ -93,7 +95,8 @@ async function getDashboardData(organizationId: string) {
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
   
-  if (!session?.user?.organizationId) {
+  const isStaff = session?.user?.role === "SUPER_ADMIN";
+  if (!session?.user || (!session.user.organizationId && !isStaff)) {
     return (
       <div className="p-6">
         <p>Ingen organisasjon funnet. Vennligst kontakt support.</p>
@@ -101,7 +104,7 @@ export default async function DashboardPage() {
     );
   }
 
-  const { stats, recentSubmissions } = await getDashboardData(session.user.organizationId);
+  const { stats, recentSubmissions } = await getDashboardData(session.user.organizationId ?? null);
 
   return (
     <div className="space-y-8">
