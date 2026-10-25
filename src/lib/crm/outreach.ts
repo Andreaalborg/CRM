@@ -56,7 +56,7 @@ export async function planOutreach(now = new Date()) {
   return res;
 }
 
-/** GDPR: slettesDato = siste aktivitet + 6 mnd. Leads uten vunnet deal slettes når datoen er passert. Sperrelisten beholdes. */
+/** GDPR: slettesDato = siste aktivitet + 12 mnd (GDPR_MONTHS). Leads uten vunnet deal slettes når datoen er passert. Sperrelisten beholdes. */
 export async function gdprSweep(now = new Date()) {
   // Rå SQL så Company.updatedAt ikke endres (ellers ville sjekken flytte seg selv fremover).
   await db.$executeRaw`

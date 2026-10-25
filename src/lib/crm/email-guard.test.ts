@@ -7,6 +7,7 @@ import { ownerAllowed } from "../email-guard";
 test("interne varsler: bare eierens egne adresser", () => {
   const owners = ["andreaalborg@intellisenseai.no", "andre@test.no"];
   assert.ok(ownerAllowed(" AndreAalborg@IntelliSenseAI.no ", owners));
+  assert.ok(ownerAllowed("andre.aalborg@intellisenseai.no", [...owners, "andre.aalborg@intellisenseai.no"])); // legacy-alias i overgangen
   assert.ok(!ownerAllowed("kunde@firma.no", owners));
   assert.ok(!ownerAllowed("", owners));
 });
@@ -30,6 +31,7 @@ test("ingen andre kodeveier kaller Resend enn de godkjente", () => {
     "src/app/api/invoices/[invoiceId]/send/route.ts", // admin-klikk «Send faktura»
     "src/lib/portal/actions.ts", // magisk lenke til brukeren selv (som glemt passord)
     "src/lib/portal/notify.ts", // kun kundens egne brukere med varsel PÅ, sperret til Resend er verifisert
+    "src/lib/crm/inbound-notify.ts", // varsel til eier ved ny henvendelse: AV uten INBOUND_NOTIFY_ENABLED=1, mottaker låst til eier-adresser, dry-run respektert
   ]);
   const walk = (d: string): string[] => readdirSync(d).flatMap((n) => { const p = join(d, n); return statSync(p).isDirectory() ? walk(p) : [p]; });
   const hits = walk("src").filter((f) => /\.(ts|tsx)$/.test(f) && !f.endsWith(".test.ts"))

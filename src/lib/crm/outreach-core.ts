@@ -7,7 +7,7 @@ export const SEQ_DAYS = [0, 4, 10] as const;
 export const PAUSE_AFTER_LAST_DAYS = 7;
 export const PAUSE_DAYS = 90;
 export const WEEKLY_CAP = 20;
-export const GDPR_MONTHS = 6;
+export const GDPR_MONTHS = 12;
 /** Stages der sekvensen er aktiv. Alt annet (Svart, Møte, Tapt, Pause …) stopper den. */
 export const SEQ_ACTIVE_STAGES = ["GODKJENT", "KONTAKTET"] as const;
 export const STEG_LABEL = ["Dag 0", "Dag 4", "Dag 10"] as const;
@@ -72,7 +72,7 @@ export function footer(unsubUrl: string, kilde: string): string {
     "André Aalborg, IntelliSense (intellisenseai.no) · +47 467 44 670",
     "",
     "Dette er en markedsføringshenvendelse til virksomhetens generelle e-postadresse.",
-    `Hvorfor du får denne: vi fant ${kilde}. Vi behandler kun firmaopplysninger (berettiget interesse) og sletter dem etter 6 måneder uten kontakt. Personvern: https://intellisenseai.no/personvern`,
+    `Hvorfor du får denne: vi fant ${kilde}. Vi behandler kun firmaopplysninger (berettiget interesse) og sletter dem etter 12 måneder uten kontakt. Personvern: https://intellisenseai.no/personvern`,
     `Ikke interessert? Meld av med ett klikk: ${unsubUrl}`,
   ].join("\n");
 }

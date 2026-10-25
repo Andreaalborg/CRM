@@ -1,14 +1,17 @@
 // POST /api/v1/inbound – innkommende henvendelser fra intellisenseai.no (/kontakt, «Be om tilbud», chat).
 // Autentisering: HMAC-signatur (X-IS-Timestamp + X-IS-Signature) eller X-IS-Key, med INBOUND_WEBHOOK_SECRET.
-// Leadet havner i «Innkommende» med neste steg i dag, slik at det vises på «I dag». Sender ingen e-post.
+// Leadet havner i «Innkommende» med neste steg i dag, slik at det vises på «I dag». Idempotent via ekstern_id.
+// Sender aldri e-post til innsender; varsel kun til eier bak INBOUND_NOTIFY_ENABLED=1.
 import { db } from "@/lib/db";
 import { verifyInbound } from "@/lib/crm/apikey";
 import { normalizeOrgnr, isValidOrgnr, isGenericEmail, STAGE_LABEL, type Stage } from "@/lib/crm/core";
 import { json, rateLimitDb, botAudit, createDealTx } from "@/lib/crm/botapi";
+import { isAutoSender } from "@/lib/crm/inbox-status";
+import { notifyOwnerNewInbound } from "@/lib/crm/inbound-notify";
 
 export const dynamic = "force-dynamic";
 
-const KILDER: Record<string, string> = { kontakt: "Kontaktskjema", tilbud: "Be om tilbud", chat: "Chat", ghl: "Kontaktskjema (GHL)" };
+const KILDER: Record<string, string> = { kontakt: "Kontaktskjema", tilbud: "Be om tilbud", chat: "Chat", ghl: "Kontaktskjema (GHL)", epost: "E-post (hei@)" };
 const str = (v: unknown, max = 500) => (typeof v === "string" ? v.trim().slice(0, max) || null : null);
 
 export async function POST(req: Request) {
@@ -17,10 +20,12 @@ export async function POST(req: Request) {
   const v = verifyInbound(process.env.INBOUND_WEBHOOK_SECRET, req.headers, body);
   if (!v.ok) return json({ error: v.reason }, 401);
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "ukjent";
-  if (!(await rateLimitDb(`inbound:${ip}`, 30)).ok) return json({ error: "For mange forespørsler" }, 429);
 
   let b: Record<string, unknown>;
   try { b = JSON.parse(body); } catch { return json({ error: "Ugyldig JSON" }, 400); }
+  // Besøkerens IP (signert i body av nettsiden) brukes som rate-limit-nøkkel i stedet for Vercels IP. Lagres ikke ut over bøtta.
+  const klientIp = str(b.klient_ip, 64);
+  if (!(await rateLimitDb(`inbound:${klientIp || ip}`, 30)).ok) return json({ error: "For mange forespørsler" }, 429);
   // GHL-webhooks sender gjerne full_name/email/phone/company_name
   const navn = str(b.navn ?? b.name ?? b.full_name, 200);
   const epost = str(b.epost ?? b.email, 200)?.toLowerCase() ?? null;
@@ -32,8 +37,17 @@ export async function POST(req: Request) {
   const side = str(b.side ?? b.page, 300);
   const orgnrRaw = normalizeOrgnr(str(b.orgnr ?? b.org_nr, 20));
   const orgnr = orgnrRaw && isValidOrgnr(orgnrRaw) ? orgnrRaw : null;
+  // Idempotens: ekstern_id (f.eks. Message-ID eller skjema-nøkkel) → CrmActivity.kilde «nettside/<kilde>#<id>». Ingen skjemaendring.
+  const eksternId = str(b.ekstern_id ?? b.external_id, 200);
+  const activityKilde = eksternId ? `nettside/${kildeKey}#${eksternId}` : `nettside/${kildeKey}`;
+  if (isAutoSender(epost, b.auto_submitted)) return json({ ok: true, ignored: true, reason: "auto-svar/no-reply" }, 200);
   if (!navn && !epost && !telefon) return json({ error: "Mangler navn, e-post eller telefon" }, 400);
   if (epost && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(epost)) return json({ error: "Ugyldig e-post" }, 400);
+
+  if (eksternId) {
+    const seen = await db.crmActivity.findFirst({ where: { kilde: activityKilde }, select: { companyId: true, dealId: true } });
+    if (seen) return json({ ok: true, created: false, duplicate: true, idempotent: true, crm_id: seen.companyId }, 200);
+  }
 
   // Dedup: orgnr → kontakt med samme e-post → firma med samme generiske e-post
   let company =
@@ -47,6 +61,11 @@ export async function POST(req: Request) {
     .filter(Boolean).join("\n");
 
   const result = await db.$transaction(async (tx) => {
+    if (eksternId) { // serialiser samtidige forsøk med samme ekstern_id
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${activityKilde}))`;
+      const again = await tx.crmActivity.findFirst({ where: { kilde: activityKilde }, select: { companyId: true, dealId: true } });
+      if (again) return { companyId: again.companyId, dealId: again.dealId ?? "", stage: "INNKOMMENDE" as Stage, idempotent: true };
+    }
     if (!company) {
       company = await tx.company.create({
         data: {
@@ -69,10 +88,13 @@ export async function POST(req: Request) {
       const d = await createDealTx(tx, company.id, company.navn, "INNKOMMENDE", { kilde: "NETTSIDE", bot: "nettside", tittel: `${kilde}: ${firma || navn || epost}`, nesteSteg: `Svar på henvendelsen (${kilde})`, nesteStegDato: new Date() });
       dealId = d.id;
     }
-    await tx.crmActivity.create({ data: { companyId: company.id, dealId, type: "EPOST", tekst, kilde: `nettside/${kildeKey}` } });
+    await tx.crmActivity.create({ data: { companyId: company.id, dealId, type: "EPOST", tekst, kilde: activityKilde } });
     const stage = (await tx.deal.findUniqueOrThrow({ where: { id: dealId } })).stage as Stage;
-    return { companyId: company.id, dealId, stage };
+    return { companyId: company.id, dealId, stage, idempotent: false };
   });
+  if (result.idempotent) return json({ ok: true, created: false, duplicate: true, idempotent: true, crm_id: result.companyId }, 200);
   await botAudit("nettside", duplicate ? "inbound_existing" : "inbound_created", "company", result.companyId, { kilde: kildeKey, auth: v.method });
+  // Varsel til eier (AV uten INBOUND_NOTIFY_ENABLED=1; låst til eier-adresser; feil svelges)
+  await notifyOwnerNewInbound({ kilde, navn: navn || epost, side, utdrag: melding, dealId: result.dealId, duplicate });
   return json({ ok: true, created: !duplicate, duplicate, crm_id: result.companyId, status: STAGE_LABEL[result.stage] }, duplicate ? 200 : 201);
 }
